@@ -91,10 +91,19 @@ void test(uint8_t n) {
   Serial.println(esp->joinAP("$WIFI_SSID$", "$WIFI_PASS$"));
   Serial.println(esp->getLocalIP());
   esp->registerUDP("10.0.0.2",40444);
-  uint8_t enroller_code[5] = {1, 238, 0, 1, 29}; // 01 EE 00 01 1D
+  uint8_t enroller_code[5] = {1, 238, 0, 1, 17}; // 01 EE 00 01 11
   esp->send(enroller_code, 5);
-  fps.GetTemplate(0);
-  esp_serial->listen();
+  uint8_t reply_buffer[5];
+  if(esp->recv(reply_buffer, 5, 5000)) {
+    for (int i=0; i<5; i++) {
+      Serial.print(reply_buffer[i]);
+      Serial.print(" ");
+    }
+    uint8_t sending_code[5] = {1, 238, 0, 1, 29}; // 01 EE 00 01 1D
+    esp->send(sending_code, 5);
+    fps.GetTemplate(0);
+    esp_serial->listen();
+  } else Serial.print("No answer from server.");
   //uint8_t test_data[16] = {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,n};
   //esp->send(test_data, 16);
   esp->unregisterUDP();
