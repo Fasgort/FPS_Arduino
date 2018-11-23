@@ -41,22 +41,14 @@ const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 void setup() {
-  // LCD
   
-  // set up the LCD's number of columns and rows:
+  // LCD
   lcd.begin(16, 2);
-  // Print a message to the LCD.
-  // lcd.print("hello, world!");
-  // set the cursor to column 0, line 1
-  // (note: line 1 is the second row, since counting begins with 0):
-  //lcd.setCursor(0, 1);
 
   // Buzzer
   pinMode(buzzer, OUTPUT); // Set buzzer - pin 9 as an output
 
   // FPS
-
-  //Serial.begin(9600);
   fps.Open(); //send serial command to initialize fps
   fps.DeleteAll(); // Clear the DB
 
@@ -83,8 +75,8 @@ bool syncFingerprint(int id) {
   while(!esp->kick()) delay(1000);
 
   // Connect to wifi and start a UDP connection
-  esp->joinAP("$WIFI_SSID$", "$WIFI_PASS$");
-  esp->registerUDP("10.0.0.2",40444);
+  esp->joinAP(F("$WIFI_SSID$", "$WIFI_PASS$"));
+  esp->registerUDP(F("10.0.0.2"),40444);
 
   // Identify yourself to the server and declare intentions
   uint8_t enroller_code[5] = {1, 238, 0, 1, 17}; // 01 EE 00 01 11
@@ -130,59 +122,51 @@ void Enroll() {
   }
   fps.EnrollStart(enrollid);
   lcd.setCursor(0,0);
-  lcd.print("Enrolling #");
+  lcd.print(F("Enrolling #"));
   lcd.print(enrollid);
 
   // Enroll
   Buzz();
-  //Serial.print("Press finger to Enroll #");
-  //Serial.println(enrollid);
   lcd.setCursor(0,1);
-  lcd.print("  Press finger  ");
+  lcd.print(F("  Press finger  "));
   while(fps.IsPressFinger() == false) delay(100);
   bool bret = fps.CaptureFinger(true);
   int iret = 0;
   if (bret != false)
   {
     Buzz();
-    //Serial.println("Remove finger");
     lcd.setCursor(0,1);
-    lcd.print(" Remove finger  ");
+    lcd.print(F(" Remove finger  "));
     fps.Enroll1(); 
     while(fps.IsPressFinger() == true) delay(100);
     Buzz();
-    //Serial.println("Press same finger again");
     lcd.setCursor(0,1);
-    lcd.print("  Press finger  ");
+    lcd.print(F("  Press finger  "));
     while(fps.IsPressFinger() == false) delay(100);
     bret = fps.CaptureFinger(true);
     if (bret != false)
     {
       Buzz();
-      //Serial.println("Remove finger");
       lcd.setCursor(0,1);
-      lcd.print(" Remove finger  ");
+      lcd.print(F(" Remove finger  "));
       fps.Enroll2();
       while(fps.IsPressFinger() == true) delay(100);
       Buzz();
-      //Serial.println("Press same finger yet again");
       lcd.setCursor(0,1);
-      lcd.print("  Press finger  ");
+      lcd.print(F("  Press finger  "));
       while(fps.IsPressFinger() == false) delay(100);
       bret = fps.CaptureFinger(true);
       if (bret != false)
       {
         Buzz();
-        //Serial.println("Remove finger");
         lcd.setCursor(0,1);
-        lcd.print(" Remove finger  ");
+        lcd.print(F(" Remove finger  "));
        iret = fps.Enroll3();
         while(fps.IsPressFinger() == true) delay(100);
         if (iret == 0)
         {
-          //Serial.println("Enrolling Successful");
           lcd.setCursor(0,1);
-          lcd.print("   Successful   ");
+          lcd.print(F("   Successful   "));
 
           fps.SetLED(false);   //turn off LED
           delay(3000);
@@ -191,53 +175,47 @@ void Enroll() {
           
           // Synchronize the fingerprint with the DB
           lcd.setCursor(0,0);
-          lcd.print("Synchronizing DB");
+          lcd.print(F("Synchronizing DB"));
           for(int i=1; i<=3; i++){
             lcd.setCursor(0,1);
-            lcd.print("Try #");
+            lcd.print(F("Try #"));
             lcd.print(i);
-            lcd.print("      ");
+            lcd.print(F("      "));
             lcd.setCursor(6,1);
             if(syncFingerprint(enrollid)) {
-              lcd.print(": Succesful");
+              lcd.print(F(": Success"));
               Buzz();
               delay(3000);
               break;
             } else {
-              lcd.print(": Fail");
+              lcd.print(F(": Fail"));
               Buzz();
               delay(3000);
             }
           }
-          return;
-          
+                    
         }
         else
         {
-          //Serial.print("Enrolling Failed with error code:");
-          //Serial.println(iret);
           lcd.setCursor(0,1);
-          lcd.print("   Failed: #");
+          lcd.print(F("   Failed: #"));
           lcd.print(iret);
-          lcd.print("   ");
+          lcd.print(F("   "));
         }
       }
       else {
-        //Serial.println("Failed to capture third finger");
         lcd.setCursor(0,1);
-        lcd.print("Fail: Bad finger");
+        lcd.print(F("Fail: Bad finger"));
       }
     }
     else {
-      //Serial.println("Failed to capture second finger");
       lcd.setCursor(0,1);
-      lcd.print("Fail: Bad finger");
+      lcd.print(F("Fail: Bad finger"));
     }
   }
   else {
-    //Serial.println("Failed to capture first finger");
     lcd.setCursor(0,1);
-    lcd.print("Fail: Bad finger");
+    lcd.print(F("Fail: Bad finger"));
   }
   fps.SetLED(false);   //turn off LED
   delay(3000);
@@ -247,56 +225,5 @@ void Enroll() {
 
 void loop()
 {
-  delay(100000); // Done, shut down or restart
-/*  
-  lcd.setCursor(0,0);
-  while(true){
-    Serial.println("AT");
-    delay(10);
-    int counta = 0;
-    while(Serial.available()) {
-      lcd.print((char)Serial.read());
-      counta++;
-      if((counta%16) == 0) lcd.setCursor(0,0);
-      delay(100);
-    }
-  }*/
-  /*lcd.setCursor(0,0);
-  lcd.print("Waiting finger  ");
-  // Identify fingerprint test
-  if (fps.IsPressFinger())
-  {
-    fps.CaptureFinger(false);
-    int id = fps.Identify1_N();
-    
-       /*Note:  GT-521F52 can hold 3000 fingerprint templates
-                GT-521F32 can hold 200 fingerprint templates
-                 GT-511C3 can hold 200 fingerprint templates. 
-                GT-511C1R can hold 20 fingerprint templates.
-       Make sure to change the id depending on what
-       model you are using *//*
-    if (id <200) //<- change id value depending model you are using
-    {//if the fingerprint matches, provide the matching template ID
-      Serial.print("Verified ID:");
-      Serial.println(id);
-      lcd.setCursor(0,1);
-      lcd.print("  Found ID #");
-      lcd.print(id);
-    }
-    else
-    {//if unable to recognize
-      Serial.println("Finger not found");
-      lcd.setCursor(0,1);
-      lcd.print("  Not found     ");
-    }
-    Buzz();
-    delay(3000);
-    Buzz();
-    lcd.clear();
-  }
-  else
-  {
-    Serial.println("Please press finger");
-  }
-  delay(100);*/
+  delay(100000); // Done, shutdown or restart
 }
