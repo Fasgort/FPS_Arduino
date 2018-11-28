@@ -8,7 +8,7 @@ SoftwareSerial *esp_serial = new SoftwareSerial(A0, A1); // RX, TX
 ESP8266 *esp = new ESP8266(*esp_serial, 9600);
 
 // need a serial port to communicate with the GT-511C3
-FPS_GT511C3 fps(8, 7, esp_serial, esp, 9600); // Arduino RX (GT TX), Arduino TX (GT RX)
+FPS_GT511C3 fps(8, 7, 9600); // Arduino RX (GT TX), Arduino TX (GT RX)
 // the Arduino TX pin needs a voltage divider, see wiring diagram at:
 // http://startingelectronics.com/articles/GT-511C3-fingerprint-scanner-hardware/
 
@@ -91,8 +91,41 @@ bool syncFingerprint(int id) {
   if(reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
     uint8_t sending_code[5] = {1, 238, 0, 1, 29}; // 01 EE 00 01 1D
     esp->send(sending_code, 5);
+
+    uint16_t data_size = 500; // Template + 2 checksum bytes
+    uint8_t data[data_size];
     
-    sync_done = fps.GetTemplate(id); // FPS will get the fingerprint and send it to the ESP
+    sync_done = fps.GetTemplate(id, data); // FPS will get the fingerprint and send it to the ESP
+    esp_serial->listen();
+    
+    if(!sync_done) {
+
+      uint16_t numberPacketsNeeded = data_size / 64;
+      bool smallLastPacket = false;
+      uint8_t lastPacketSize = data_size % 64;
+      if(lastPacketSize != 0)
+      {
+        numberPacketsNeeded++;
+        smallLastPacket = true;
+      }
+      
+      for (uint16_t packetCount=1; packetCount < numberPacketsNeeded; packetCount++) {
+        uint8_t data_buffer[64];
+        for (uint8_t i=0; i < 64; i++) {
+          data_buffer[i] = data[(packetCount-1)*64 + i];
+        }
+        esp->send(data_buffer, 64);
+      }
+
+      if (smallLastPacket) {
+        uint8_t lastdata[lastPacketSize];
+        for (uint8_t i=0; i < lastPacketSize; i++) {
+          lastdata[i] = data[(numberPacketsNeeded-1)*64 + i];
+        }
+        esp->send(lastdata, lastPacketSize);
+      }
+    }
+    
   }
 
   // Try to leave the ESP offline with a clean state
