@@ -67,7 +67,20 @@ void Buzz(){
   noTone(buzzer);     // Stop sound...
 }
 
-bool addFingerprint(uint8_t data[]) {
+// Still deciding how the sync will work
+// IDEA: SyncDB generate a list of fingerprint IDs (DDBB IDs) 
+  // that need to be updated.
+// The behaviour would be like this:
+  // > Create a list of hashes with the fingerprints in the FPS
+  // > Send to the DDBB, that will compare with the local DDBB hashes
+  // > DDBB sends a list of fingerprints that need to be removed (or nothing)
+  // > FPS deletes the fingerprints
+  // > DDBB sends a list of fingerprints that need to be uploaded (IDs only)
+  // > FPS start asking for each ID, using addFingerprint(ID)
+  // > Sync is done
+// addFingerprint sends a code with the ID and receives the template,
+  // finally updating it in the FPS
+bool addFingerprint(uint8_t id) {
 
   // Get the ESP online with a clean state
   esp_serial->listen();
@@ -94,18 +107,28 @@ bool addFingerprint(uint8_t data[]) {
   uint8_t reply_buffer[5];
   esp->recv(reply_buffer, 5, 5000);
 
-  // Send the data if the reply is okay
+  // Check reply
   bool sync_failed = true;
   if(reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
-    uint8_t sending_code[5] = {1, 238, 0, 1, 29}; // 01 EE 00 01 1D
-    esp->send(sending_code, 5);
+
+    // Ask the DDBB to upload the fingerprint requested
+    uint8_t request_code[6] = {1, 253, 0, 1, 48, id};
+    esp->send(request_code, 6, 5000);
     
-    sync_failed = fps.SetTemplate(data, 0, true); // FPS will get the fingerprint and send it to the ESP
-    esp_serial->listen();
-    
-    if(!sync_failed) {
-      
+    uint8_t data[498];
+    esp->recv(data, 498);
+
+    // find open enroll id
+    int enrollid = 0;
+    bool usedid = true;
+    while (usedid == true)
+    {
+      usedid = fps.CheckEnrolled(enrollid);
+      if (usedid==true) enrollid++;
     }
+    
+    sync_failed = fps.SetTemplate(data, enrollid, true);
+    esp_serial->listen();
     
   }
 
@@ -122,8 +145,11 @@ bool addFingerprint(uint8_t data[]) {
   
 }
 
+// DEBUG: Let's go easy and just ask for an already defined list of fingerprints
 void SyncDB() {
-  
+  addFingerprint(4);
+  addFingerprint(6);
+  addFingerprint(9);
 }
 
 void loop()
