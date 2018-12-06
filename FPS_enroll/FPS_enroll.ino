@@ -41,6 +41,9 @@ const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 void setup() {
+
+  // Debug
+  Serial.begin(9600);
   
   // LCD
   lcd.begin(16, 2);
@@ -78,6 +81,10 @@ bool syncFingerprint(int id) {
   esp->joinAP(F("$WIFI_SSID$", "$WIFI_PASS$"));
   esp->registerUDP(F("10.0.0.2"),40444);
 
+  // DEBUG - Print the current connection details
+  Serial.println(esp->getLocalIP());
+  Serial.println(esp->getIPStatus());
+
   // Identify yourself to the server and declare intentions
   uint8_t enroller_code[5] = {1, 238, 0, 1, 17}; // 01 EE 00 01 11
   esp->send(enroller_code, 5);
@@ -87,7 +94,7 @@ bool syncFingerprint(int id) {
   esp->recv(reply_buffer, 5, 5000);
 
   // Send the data if the reply is okay
-  bool sync_done = false;
+  bool sync_failed = true;
   if(reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
     uint8_t sending_code[5] = {1, 238, 0, 1, 29}; // 01 EE 00 01 1D
     esp->send(sending_code, 5);
@@ -95,10 +102,10 @@ bool syncFingerprint(int id) {
     uint16_t data_size = 500; // Template + 2 checksum bytes
     uint8_t data[data_size];
     
-    sync_done = fps.GetTemplate(id, data); // FPS will get the fingerprint and send it to the ESP
+    sync_failed = fps.GetTemplate(id, data); // FPS will get the fingerprint and send it to the ESP
     esp_serial->listen();
     
-    if(!sync_done) {
+    if(!sync_failed) {
 
       uint16_t numberPacketsNeeded = data_size / 64;
       bool smallLastPacket = false;
@@ -136,7 +143,7 @@ bool syncFingerprint(int id) {
   esp->restart();
   while(esp_serial->available() > 0) esp_serial->read();
 
-  if(!sync_done) return true;
+  if(!sync_failed) return true;
   else return false;
   
 }
