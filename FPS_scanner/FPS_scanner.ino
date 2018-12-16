@@ -75,9 +75,6 @@ bool SyncDB() {
     delete hash_array32;
   }
 
-  // Start listening the ESP serial channel back again
-  esp_serial->listen();
-
   // Connect to the server
   initiateConnection();
 
