@@ -57,13 +57,13 @@ void setup() {
   //fps.DeleteAll(); // Clear the DB
 
   // Do the syncDB routine once. Restart to redo it.
-  newSyncDB();
+  SyncDB();
   Buzz(); // Buzz to tell the user the FPS is ready.
 
 }
 
 // Here we go
-bool newSyncDB() {
+bool SyncDB() {
 
   uint8_t enrolled_count = fps.GetEnrollCount(); // Get the number of enrolled fingerprints (Max 200 for our FPS, if using another FPS, change type to uint16_t).
   uint8_t* hash_array8; // I need to declare this variable outside the if nest
