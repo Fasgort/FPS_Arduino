@@ -75,7 +75,11 @@ bool newSyncDB() {
     delete hash_array32;
   }
 
-  // TO-DO: Connecthing method that retries until it works
+  // Start listening the ESP serial channel back again
+  esp_serial->listen();
+
+  // Connect to the server
+  initiateConnection();
 
   // Identify yourself to the server and declare intentions
   uint8_t sync_start_code[5] = {1, 253, 0, 1, 219}; // 01 FD 00 01 DB
@@ -139,9 +143,12 @@ bool newSyncDB() {
     }
 
     delete id_enrolled_array;
+    dropConnection();
+
     return true;
   }
 
+  dropConnection();
   return false;
 }
 
@@ -157,9 +164,45 @@ void SyncAdd(uint8_t additions_buffer[], uint8_t num_additions) {
   }
 }
 
-void SyncFingerprint(uint8_t template_hash[4]) {
+bool SyncFingerprint(uint8_t template_hash[4]) {
 
+  // Listen to the ESP serial channel
+  esp_serial->listen();
 
+  // Identify yourself to the server and declare intentions
+  uint8_t sync_fingerprint_code[5] = {1, 253, 0, 1, 34}; // 01 FD 00 01 22
+  esp->send(sync_fingerprint_code, 5);
+
+  // Receive the reply
+  uint8_t reply_buffer[5];
+  esp->recv(reply_buffer, 5, 5000);
+
+  // Check reply
+  bool sync_failed = true;
+  if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
+
+    // Ask the DDBB to upload the fingerprint requested
+    uint8_t request_code[9] = {1, 253, 0, 1, 48, template_hash[0], template_hash[1], template_hash[2], template_hash[3]};
+    esp->send(request_code, 9);
+
+    uint8_t data[498];
+    esp->recv(data, 498, 5000);
+
+    // find open enroll id
+    int enrollid = 0;
+    bool usedid = true;
+    while (usedid == true)
+    {
+      usedid = fps.CheckEnrolled(enrollid);
+      if (usedid == true) enrollid++;
+    }
+
+    sync_failed = fps.SetTemplate(data, enrollid, true);
+    esp_serial->listen();
+  }
+
+  if (!sync_failed) return true;
+  else return false;
 
 }
 
@@ -198,69 +241,7 @@ uint8_t* ConvertArray32To8(uint32_t array32[], uint16_t len) {
   return array8;
 }
 
-void Buzz() {
-  tone(buzzer, 1000); // Send 1KHz sound signal...
-  delay(100);
-  noTone(buzzer);     // Stop sound...
-}
-
-// Still deciding how the sync will work
-// IDEA: SyncDB generate a list of fingerprint IDs (DDBB IDs)
-// that need to be updated.
-// The behaviour would be like this:
-// > Create a list of hashes with the fingerprints in the FPS
-// > Send to the DDBB, that will compare with the local DDBB hashes
-// > DDBB sends a list of fingerprints that need to be removed (or nothing)
-// > FPS deletes the fingerprints
-// > DDBB sends a list of fingerprints that need to be uploaded (IDs only)
-// > FPS start asking for each ID, using addFingerprint(ID)
-// > Sync is done
-// addFingerprint sends a code with the ID and receives the template,
-// finally updating it in the FPS
-// NOTE: SHOULD USE HASH (obtained from the sync process) INSTEAD OF ID
-bool addFingerprint(uint8_t id) {
-
-  // Identify yourself to the server and declare intentions
-  uint8_t enroller_code[5] = {1, 253, 0, 1, 34}; // 01 FD 00 01 22
-  esp->send(enroller_code, 5);
-
-  // Receive the reply
-  uint8_t reply_buffer[5];
-  esp->recv(reply_buffer, 5, 5000);
-
-  // Check reply
-  bool sync_failed = true;
-  if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
-
-    // Ask the DDBB to upload the fingerprint requested
-    uint8_t request_code[6] = {1, 253, 0, 1, 48, id};
-    esp->send(request_code, 6);
-
-    uint8_t data[498];
-    esp->recv(data, 498, 5000);
-
-    // find open enroll id
-    int enrollid = 0;
-    bool usedid = true;
-    while (usedid == true)
-    {
-      usedid = fps.CheckEnrolled(enrollid);
-      if (usedid == true) enrollid++;
-    }
-
-    sync_failed = fps.SetTemplate(data, enrollid, true);
-    esp_serial->listen();
-
-  }
-
-  if (!sync_failed) return true;
-  else return false;
-
-}
-
-// DEBUG: Let's go easy and just ask for an already defined list of fingerprints
-void SyncDB() {
-
+void initiateConnection() {
   // Get the ESP online with a clean state
   esp_serial->listen();
   while (esp_serial->available() > 0) esp_serial->read();
@@ -271,22 +252,16 @@ void SyncDB() {
   while (!esp->kick()) delay(1000);
 
   // Connect to wifi and start a UDP connection
-  esp->joinAP(F("$WIFI_SSID$"), F("$WIFI_PASS$"));
-  esp->registerUDP(F("10.0.0.2"), 40444);
+  // Retry steps if failed
+  while (!esp->joinAP(F("$WIFI_SSID$"), F("$WIFI_PASS$")));
+  while (!esp->registerUDP(F("10.0.0.2"), 40444));
 
   // DEBUG - Print the current connection details
   Serial.println(esp->getLocalIP());
   Serial.println(esp->getIPStatus());
+}
 
-  // Get all fingerprints (test)
-  for (int i = 1; i <= 10; i++) {
-    bool sync = false;
-    for (int try_count = 0; try_count < 2; try_count++) {
-      sync = addFingerprint(i);
-      if (sync) break;
-    }
-  }
-
+void dropConnection() {
   // Try to leave the ESP offline with a clean state
   while (!esp->kick()) delay(1000);
   while (esp_serial->available() > 0) esp_serial->read();
@@ -294,6 +269,12 @@ void SyncDB() {
   esp->leaveAP();
   esp->restart();
   while (esp_serial->available() > 0) esp_serial->read();
+}
+
+void Buzz() {
+  tone(buzzer, 1000); // Send 1KHz sound signal...
+  delay(100);
+  noTone(buzzer);     // Stop sound...
 }
 
 void loop()
