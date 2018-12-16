@@ -1,3 +1,4 @@
+#include <RokkitHash.h>
 #include <doxygen.h>
 #include <ESP8266.h>
 #include "SoftwareSerial.h"
@@ -53,12 +54,121 @@ void setup() {
 
   // FPS
   fps.Open(); //send serial command to initialize fps
-  fps.DeleteAll(); // Clear the DB
+  //fps.DeleteAll(); // Clear the DB
 
   // Do the syncDB routine once. Restart to redo it.
-  SyncDB();
+  newSyncDB();
   Buzz(); // Buzz to tell the user the FPS is ready.
 
+}
+
+// Here we go
+bool newSyncDB() {
+
+  uint8_t enrolled_count = fps.GetEnrollCount(); // Get the number of enrolled fingerprints (Max 200 for our FPS, if using another FPS, change type to uint16_t).
+  uint8_t* hash_array8; // I need to declare this variable outside the if nest
+  uint8_t* id_enrolled_array = new uint8_t[enrolled_count]; // This list holds the IDs of the hashed fingerprints, used for deletions
+  if (!enrolled_count == 0) {
+    uint32_t* hash_array32 = new uint32_t[enrolled_count];
+    HashFingerprintDDBB(hash_array32, id_enrolled_array, enrolled_count); // Generate a list of hashes from every existing fingerprint in the FPS
+    hash_array8 = ConvertArray32To8(hash_array32, enrolled_count); // ESP only works with arrays of a single byte
+    delete hash_array32;
+  }
+
+  // TO-DO: Connecthing method that retries until it works
+
+  // Identify yourself to the server and declare intentions
+  uint8_t sync_start_code[5] = {1, 253, 0, 1, 219}; // 01 FD 00 01 DB
+  esp->send(sync_start_code, 5);
+
+  // Receive the reply
+  uint8_t reply_buffer[5];
+  esp->recv(reply_buffer, 5, 5000);
+
+  // Check reply
+  if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
+
+    if (enrolled_count == 0) {
+      // Ask for every fingerprint, no deletions
+      uint8_t full_sync_code[5] = {1, 253, 0, 1, 253}; // 01 FD 00 01 FD
+      esp->send(full_sync_code, 5);
+    } else {
+      // Ask for a partial DDBB download
+      uint8_t partial_sync_code[5] = {1, 253, 0, 1, 93}; // 01 FD 00 01 5D
+      esp->send(partial_sync_code, 5);
+
+      // Send hash list
+      esp->send(hash_array8, enrolled_count * 4);
+    }
+
+    uint8_t sync_reply_buffer[6] = {0, 0, 0, 0, 0, 0};
+    while (sync_reply_buffer[0] == 1 && sync_reply_buffer[1] == 219 && sync_reply_buffer[4] == 13) { // Keep processing received packets until the server is done (Reply = 0D)
+      esp->recv(sync_reply_buffer, 6, 5000); // If the DDBB is slow generating the list of fingerprint hashes and replying, this may fail.
+
+      if (sync_reply_buffer[4] == 173) { // Reply = AD (Add new fingerprints)
+        uint8_t num_additions = sync_reply_buffer[5];
+        uint8_t additions_buffer[num_additions * 4];
+        esp->recv(additions_buffer, num_additions * 4, 5000);
+        SyncAdd(additions_buffer, num_additions); // Add the required fingerprints
+      }
+
+      if (sync_reply_buffer[4] == 222) { // Reply = DE (deletion)
+        uint8_t num_deletions = sync_reply_buffer[5];
+        uint8_t deletions_buffer[num_deletions * 4];
+        esp->recv(deletions_buffer, num_deletions * 4, 5000);
+        SyncDelete(deletions_buffer, id_enrolled_array, num_deletions); // Delete the required fingerprints
+      }
+    }
+
+    delete hash_array8;
+    delete id_enrolled_array;
+    return true;
+  }
+
+  return false;
+}
+
+void SyncAdd(uint8_t additions_buffer[], uint8_t num_additions){
+  
+}
+
+void SyncDelete(uint8_t deletions_buffer[], uint8_t id_array[], uint8_t num_deletions){
+  
+}
+
+// Generate a list of hashes from every existing fingerprint in the FPS
+void HashFingerprintDDBB(uint32_t hash_array32[], uint8_t id_array[], uint8_t enrolled_count) {
+
+  for (uint8_t i = 0; i < 200; i++) {
+    if (fps.CheckEnrolled(i)) {
+
+      uint8_t data[500];
+      bool sync_failed = true;
+
+      while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
+        sync_failed = fps.GetTemplate(i, data);
+      }
+
+      hash_array32[--enrolled_count] = rokkit((char*)data, 500); // This cast is iffy, but should work
+      id_array[enrolled_count] = i;
+      if (enrolled_count == 0) break;
+    }
+  }
+}
+
+// Converts an array of 32 bits to 8 bits, big-endian
+uint8_t* ConvertArray32To8(uint32_t array32[], uint16_t len) {
+
+  uint8_t* array8 = new uint8_t[len * 4];
+
+  for (uint16_t i = 0; i < len; i++) {
+    array8[i * 4] = (array32[i] & 0xff000000) >> 24;
+    array8[i * 4 + 1] = (array32[i] & 0x00ff0000) >> 16;
+    array8[i * 4 + 2] = (array32[i] & 0x0000ff00) >> 8;
+    array8[i * 4 + 3] = (array32[i] & 0x000000ff);
+  }
+
+  return array8;
 }
 
 void Buzz() {
@@ -80,6 +190,7 @@ void Buzz() {
 // > Sync is done
 // addFingerprint sends a code with the ID and receives the template,
 // finally updating it in the FPS
+// NOTE: SHOULD USE HASH (obtained from the sync process) INSTEAD OF ID
 bool addFingerprint(uint8_t id) {
 
   // Identify yourself to the server and declare intentions
