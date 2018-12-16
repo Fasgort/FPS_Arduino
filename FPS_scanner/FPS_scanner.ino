@@ -99,28 +99,45 @@ bool newSyncDB() {
 
       // Send hash list
       esp->send(hash_array8, enrolled_count * 4);
+      delete hash_array8;
     }
+
+    bool additions = false;
+    uint8_t num_additions = 0;
+    uint8_t* additions_buffer;
+
+    bool deletions = false;
+    uint8_t num_deletions = 0;
+    uint8_t* deletions_buffer;
 
     uint8_t sync_reply_buffer[6] = {0, 0, 0, 0, 0, 0};
     while (sync_reply_buffer[0] == 1 && sync_reply_buffer[1] == 219 && sync_reply_buffer[4] == 13) { // Keep processing received packets until the server is done (Reply = 0D)
       esp->recv(sync_reply_buffer, 6, 5000); // If the DDBB is slow generating the list of fingerprint hashes and replying, this may fail.
 
-      if (sync_reply_buffer[4] == 173) { // Reply = AD (Add new fingerprints)
-        uint8_t num_additions = sync_reply_buffer[5];
-        uint8_t additions_buffer[num_additions * 4];
-        esp->recv(additions_buffer, num_additions * 4, 5000);
-        SyncAdd(additions_buffer, num_additions); // Add the required fingerprints
+      if (sync_reply_buffer[4] == 222) { // Reply = DE (deletion)
+        deletions = true;
+        num_deletions = sync_reply_buffer[5];
+        deletions_buffer = new uint8_t[num_deletions];
+        esp->recv(deletions_buffer, num_deletions, 5000); // Receives a list of what fingerprints sent must be deleted (positions in the array)
       }
 
-      if (sync_reply_buffer[4] == 222) { // Reply = DE (deletion)
-        uint8_t num_deletions = sync_reply_buffer[5];
-        uint8_t deletions_buffer[num_deletions * 4];
-        esp->recv(deletions_buffer, num_deletions * 4, 5000);
-        SyncDelete(deletions_buffer, id_enrolled_array, num_deletions); // Delete the required fingerprints
+      if (sync_reply_buffer[4] == 173) { // Reply = AD (Add new fingerprints)
+        additions = true;
+        num_additions = sync_reply_buffer[5];
+        additions_buffer = new uint8_t[num_additions * 4];
+        esp->recv(additions_buffer, num_additions * 4, 5000); // Receives a list of what fingerprints must be added (template hashes CRC32)
       }
     }
 
-    delete hash_array8;
+    if (deletions) {
+      SyncDelete(deletions_buffer, id_enrolled_array, num_deletions); // Delete the required fingerprints
+      delete deletions_buffer;
+    }
+    if (additions) {
+      SyncAdd(additions_buffer, num_additions); // Add the required fingerprints
+      delete additions_buffer;
+    }
+
     delete id_enrolled_array;
     return true;
   }
@@ -128,12 +145,22 @@ bool newSyncDB() {
   return false;
 }
 
-void SyncAdd(uint8_t additions_buffer[], uint8_t num_additions){
-  
+// Receives a list of positions (that are traslated to in-FPS IDs, that must be deleted
+void SyncDelete(uint8_t deletions_buffer[], uint8_t id_array[], uint8_t num_deletions) {
+  for (uint8_t i = 0; i < num_deletions; i++) fps.DeleteID(id_array[deletions_buffer[i]]); // Yep, that's it.
 }
 
-void SyncDelete(uint8_t deletions_buffer[], uint8_t id_array[], uint8_t num_deletions){
-  
+void SyncAdd(uint8_t additions_buffer[], uint8_t num_additions) {
+  for (uint8_t i = 0; i < num_additions; i++) {
+    uint8_t template_hash[4] = {additions_buffer[i * 4], additions_buffer[i * 4 + 1], additions_buffer[i * 4 + 2], additions_buffer[i * 4 + 3]};
+    SyncFingerprint(template_hash);
+  }
+}
+
+void SyncFingerprint(uint8_t template_hash[4]) {
+
+
+
 }
 
 // Generate a list of hashes from every existing fingerprint in the FPS
