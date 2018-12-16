@@ -79,7 +79,7 @@ bool SyncDB() {
   initiateConnection();
 
   // Identify yourself to the server and declare intentions
-  uint8_t sync_start_code[5] = {1, 253, 0, 1, 219}; // 01 FD 00 01 DB
+  uint8_t sync_start_code[5] = {1, 253, 0, 1, 34}; // 01 FD 00 01 22
   esp->send(sync_start_code, 5);
 
   // Receive the reply
