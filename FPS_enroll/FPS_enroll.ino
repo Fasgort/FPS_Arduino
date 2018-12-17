@@ -43,7 +43,7 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 void setup() {
 
   // Debug
-  Serial.begin(9600);
+  Serial.begin(115200);
   
   // LCD
   lcd.begin(16, 2);
