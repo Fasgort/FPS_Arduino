@@ -112,7 +112,7 @@ bool SyncDB() {
     uint8_t* deletions_buffer;
 
     uint8_t sync_reply_buffer[6] = {0, 0, 0, 0, 0, 0};
-    while (sync_reply_buffer[0] == 1 && sync_reply_buffer[1] == 219 && sync_reply_buffer[4] == 13) { // Keep processing received packets until the server is done (Reply = 0D)
+    while (!sync_reply_buffer[0] == 1 || !sync_reply_buffer[1] == 219 || !sync_reply_buffer[4] == 13) { // Keep processing received packets until the server is done (Reply = 0D)
       esp->recv(sync_reply_buffer, 6, 5000); // If the DDBB is slow generating the list of fingerprint hashes and replying, this may fail.
 
       if (sync_reply_buffer[4] == 222) { // Reply = DE (deletion)
