@@ -69,7 +69,7 @@ bool SyncDB() {
   uint8_t* hash_array8; // I need to declare this variable outside the if nest
   uint8_t* id_enrolled_array = new uint8_t[enrolled_count]; // This list holds the IDs of the hashed fingerprints, used for deletions
   if (!enrolled_count == 0) {
-    uint32_t* hash_array32 = new uint32_t[enrolled_count];
+    uint32_t* hash_array32 = new uint32_t[enrolled_count]; // Careful, worst case (200 fingerprints) require 800 bytes. And hashing require 500 additional bytes to hold the fingerprint
     HashFingerprintDDBB(hash_array32, id_enrolled_array, enrolled_count); // Generate a list of hashes from every existing fingerprint in the FPS
     hash_array8 = ConvertArray32To8(hash_array32, enrolled_count); // ESP only works with arrays of a single byte
     delete hash_array32;
@@ -95,11 +95,17 @@ bool SyncDB() {
       esp->send(full_sync_code, 5);
     } else {
       // Ask for a partial DDBB download
-      uint8_t partial_sync_code[5] = {1, 253, 0, 1, 93}; // 01 FD 00 01 5D
-      esp->send(partial_sync_code, 5);
+      uint8_t partial_sync_code[6] = {1, 253, 0, 1, 93, enrolled_count}; // 01 FD 00 01 5D
+      esp->send(partial_sync_code, 6);
 
       // Send hash list
-      esp->send(hash_array8, enrolled_count * 4);
+      uint8_t packets_needed = enrolled_count / 16;
+      if (enrolled_count % 16 > 0) packets_needed++;
+      for (uint8_t packet = 0; packet < packets_needed; packet++) {
+        uint8_t num_bytes = 64;
+        if (packet == packets_needed - 1) num_bytes = enrolled_count % 16 * 4;
+        esp->send(hash_array8 + packet * 64, num_bytes);
+      }
       delete hash_array8;
     }
 
@@ -112,8 +118,10 @@ bool SyncDB() {
     uint8_t* deletions_buffer;
 
     uint8_t sync_reply_buffer[6] = {0, 0, 0, 0, 0, 0};
-    while (!sync_reply_buffer[0] == 1 || !sync_reply_buffer[1] == 219 || !sync_reply_buffer[4] == 13) { // Keep processing received packets until the server is done (Reply = 0D)
+    while (!(sync_reply_buffer[0] == 1 && sync_reply_buffer[1] == 219 && sync_reply_buffer[4] == 13)) { // Keep processing received packets until the server is done (Reply = 0D)
       esp->recv(sync_reply_buffer, 6, 5000); // If the DDBB is slow generating the list of fingerprint hashes and replying, this may fail.
+      // To-do: Server is actually way too fast and will immediately send the next packet in sequence before Arduino is ready.
+      // Idea: Reply to the server after each packet so server continues sending packets.
 
       if (sync_reply_buffer[4] == 222) { // Reply = DE (deletion)
         deletions = true;
@@ -216,7 +224,7 @@ void HashFingerprintDDBB(uint32_t hash_array32[], uint8_t id_array[], uint8_t en
         sync_failed = fps.GetTemplate(i, data);
       }
 
-      hash_array32[--enrolled_count] = rokkit((char*)data, 500); // This cast is iffy, but should work
+      hash_array32[--enrolled_count] = rokkit((char*)data, 498); // This cast is iffy, but should work
       id_array[enrolled_count] = i;
       if (enrolled_count == 0) break;
     }
@@ -260,6 +268,7 @@ void initiateConnection() {
 
 void dropConnection() {
   // Try to leave the ESP offline with a clean state
+  esp_serial->listen();
   while (!esp->kick()) delay(1000);
   while (esp_serial->available() > 0) esp_serial->read();
   esp->unregisterUDP();
