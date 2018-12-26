@@ -14,18 +14,18 @@ FPS_GT511C3 fps(8, 7, 9600); // Arduino RX (GT TX), Arduino TX (GT RX)
 
 /* 16x2 LCD circuit:
 
- * LCD RS pin to digital pin 12
- * LCD Enable pin to digital pin 11
- * LCD D4 pin to digital pin 5
- * LCD D5 pin to digital pin 4
- * LCD D6 pin to digital pin 3
- * LCD D7 pin to digital pin 2
- * LCD R/W pin to ground
- * LCD VSS pin to ground
- * LCD VCC pin to 5V
- * 10K resistor:
- * ends to +5V and ground
- * wiper to LCD VO pin (pin 3)
+   LCD RS pin to digital pin 12
+   LCD Enable pin to digital pin 11
+   LCD D4 pin to digital pin 5
+   LCD D5 pin to digital pin 4
+   LCD D6 pin to digital pin 3
+   LCD D7 pin to digital pin 2
+   LCD R/W pin to ground
+   LCD VSS pin to ground
+   LCD VCC pin to 5V
+   10K resistor:
+   ends to +5V and ground
+   wiper to LCD VO pin (pin 3)
 
 */
 
@@ -44,7 +44,7 @@ void setup() {
 
   // Debug
   Serial.begin(115200);
-  
+
   // LCD
   lcd.begin(16, 2);
 
@@ -53,14 +53,14 @@ void setup() {
 
   // FPS
   fps.Open(); //send serial command to initialize fps
-  fps.DeleteAll(); // Clear the DB
+  //fps.DeleteAll(); // Clear the DB
 
   // Do the enroll routine once. Restart to redo it.
   Enroll();
 
 }
 
-void Buzz(){
+void Buzz() {
   tone(buzzer, 1000); // Send 1KHz sound signal...
   delay(100);
   noTone(buzzer);     // Stop sound...
@@ -70,16 +70,16 @@ bool syncFingerprint(int id) {
 
   // Get the ESP online with a clean state
   esp_serial->listen();
-  while(esp_serial->available() > 0) esp_serial->read();
-  while(!esp->kick()) delay(1000);
+  while (esp_serial->available() > 0) esp_serial->read();
+  while (!esp->kick()) delay(1000);
   esp->unregisterUDP();
   esp->leaveAP();
   esp->restart();
-  while(!esp->kick()) delay(1000);
+  while (!esp->kick()) delay(1000);
 
   // Connect to wifi and start a UDP connection
   esp->joinAP(F("$WIFI_SSID$", "$WIFI_PASS$"));
-  esp->registerUDP(F("10.0.0.2"),40444);
+  esp->registerUDP(F("10.0.0.2"), 40444);
 
   // DEBUG - Print the current connection details
   Serial.println(esp->getLocalIP());
@@ -95,134 +95,108 @@ bool syncFingerprint(int id) {
 
   // Send the data if the reply is okay
   bool sync_failed = true;
-  if(reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
+  if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
     uint8_t sending_code[5] = {1, 238, 0, 1, 29}; // 01 EE 00 01 1D
     esp->send(sending_code, 5);
 
     uint16_t data_size = 500; // Template + 2 checksum bytes
     uint8_t data[data_size];
-    
+
     sync_failed = fps.GetTemplate(id, data); // FPS will get the fingerprint and send it to the ESP
     esp_serial->listen();
-    
-    if(!sync_failed) {
 
-      uint16_t numberPacketsNeeded = data_size / 64;
-      bool smallLastPacket = false;
-      uint8_t lastPacketSize = data_size % 64;
-      if(lastPacketSize != 0)
-      {
-        numberPacketsNeeded++;
-        smallLastPacket = true;
-      }
-      
-      for (uint16_t packetCount=1; packetCount < numberPacketsNeeded; packetCount++) {
-        uint8_t data_buffer[64];
-        for (uint8_t i=0; i < 64; i++) {
-          data_buffer[i] = data[(packetCount-1)*64 + i];
-        }
-        esp->send(data_buffer, 64);
-      }
+    if (!sync_failed) esp->send(data, data_size);
 
-      if (smallLastPacket) {
-        uint8_t lastdata[lastPacketSize];
-        for (uint8_t i=0; i < lastPacketSize; i++) {
-          lastdata[i] = data[(numberPacketsNeeded-1)*64 + i];
-        }
-        esp->send(lastdata, lastPacketSize);
-      }
-    }
-    
   }
 
   // Try to leave the ESP offline with a clean state
-  while(!esp->kick()) delay(1000);
-  while(esp_serial->available() > 0) esp_serial->read();
+  while (!esp->kick()) delay(1000);
+  while (esp_serial->available() > 0) esp_serial->read();
   esp->unregisterUDP();
   esp->leaveAP();
   esp->restart();
-  while(esp_serial->available() > 0) esp_serial->read();
+  while (esp_serial->available() > 0) esp_serial->read();
 
-  if(!sync_failed) return true;
+  if (!sync_failed) return true;
   else return false;
-  
+
 }
 
 void Enroll() {
 
   fps.SetLED(true);   //turn on LED so fps can see fingerprint
-  
+
   // find open enroll id
   int enrollid = 0;
   bool usedid = true;
   while (usedid == true)
   {
     usedid = fps.CheckEnrolled(enrollid);
-    if (usedid==true) enrollid++;
+    if (usedid == true) enrollid++;
   }
   fps.EnrollStart(enrollid);
-  lcd.setCursor(0,0);
+  lcd.setCursor(0, 0);
   lcd.print(F("Enrolling #"));
   lcd.print(enrollid);
 
   // Enroll
   Buzz();
-  lcd.setCursor(0,1);
+  lcd.setCursor(0, 1);
   lcd.print(F("  Press finger  "));
-  while(fps.IsPressFinger() == false) delay(100);
+  while (fps.IsPressFinger() == false) delay(100);
   bool bret = fps.CaptureFinger(true);
   int iret = 0;
   if (bret != false)
   {
     Buzz();
-    lcd.setCursor(0,1);
+    lcd.setCursor(0, 1);
     lcd.print(F(" Remove finger  "));
-    fps.Enroll1(); 
-    while(fps.IsPressFinger() == true) delay(100);
+    fps.Enroll1();
+    while (fps.IsPressFinger() == true) delay(100);
     Buzz();
-    lcd.setCursor(0,1);
+    lcd.setCursor(0, 1);
     lcd.print(F("  Press finger  "));
-    while(fps.IsPressFinger() == false) delay(100);
+    while (fps.IsPressFinger() == false) delay(100);
     bret = fps.CaptureFinger(true);
     if (bret != false)
     {
       Buzz();
-      lcd.setCursor(0,1);
+      lcd.setCursor(0, 1);
       lcd.print(F(" Remove finger  "));
       fps.Enroll2();
-      while(fps.IsPressFinger() == true) delay(100);
+      while (fps.IsPressFinger() == true) delay(100);
       Buzz();
-      lcd.setCursor(0,1);
+      lcd.setCursor(0, 1);
       lcd.print(F("  Press finger  "));
-      while(fps.IsPressFinger() == false) delay(100);
+      while (fps.IsPressFinger() == false) delay(100);
       bret = fps.CaptureFinger(true);
       if (bret != false)
       {
         Buzz();
-        lcd.setCursor(0,1);
+        lcd.setCursor(0, 1);
         lcd.print(F(" Remove finger  "));
-       iret = fps.Enroll3();
-        while(fps.IsPressFinger() == true) delay(100);
+        iret = fps.Enroll3();
+        while (fps.IsPressFinger() == true) delay(100);
         if (iret == 0)
         {
-          lcd.setCursor(0,1);
+          lcd.setCursor(0, 1);
           lcd.print(F("   Successful   "));
 
           fps.SetLED(false);   //turn off LED
           delay(3000);
           Buzz();
           lcd.clear();
-          
+
           // Synchronize the fingerprint with the DB
-          lcd.setCursor(0,0);
+          lcd.setCursor(0, 0);
           lcd.print(F("Synchronizing DB"));
-          for(int i=1; i<=3; i++){
-            lcd.setCursor(0,1);
+          for (int i = 1; i <= 3; i++) {
+            lcd.setCursor(0, 1);
             lcd.print(F("Try #"));
             lcd.print(i);
             lcd.print(F("      "));
-            lcd.setCursor(6,1);
-            if(syncFingerprint(enrollid)) {
+            lcd.setCursor(6, 1);
+            if (syncFingerprint(enrollid)) {
               lcd.print(F(": Success"));
               Buzz();
               delay(3000);
@@ -233,28 +207,28 @@ void Enroll() {
               delay(3000);
             }
           }
-                    
+
         }
         else
         {
-          lcd.setCursor(0,1);
+          lcd.setCursor(0, 1);
           lcd.print(F("   Failed: #"));
           lcd.print(iret);
           lcd.print(F("   "));
         }
       }
       else {
-        lcd.setCursor(0,1);
+        lcd.setCursor(0, 1);
         lcd.print(F("Fail: Bad finger"));
       }
     }
     else {
-      lcd.setCursor(0,1);
+      lcd.setCursor(0, 1);
       lcd.print(F("Fail: Bad finger"));
     }
   }
   else {
-    lcd.setCursor(0,1);
+    lcd.setCursor(0, 1);
     lcd.print(F("Fail: Bad finger"));
   }
   fps.SetLED(false);   //turn off LED
