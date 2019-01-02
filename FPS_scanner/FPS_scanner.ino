@@ -50,7 +50,7 @@ const uint8_t key[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6};
 void setup() {
 
   // RandomSeed
-  randomSeed(analogRead(A5)); // Unused pin
+  randomSeed(analogRead(A2) + analogRead(A3) + analogRead(A4) + analogRead(A5)); // Unused pins
 
   // Debug
   Serial.begin(115200);
