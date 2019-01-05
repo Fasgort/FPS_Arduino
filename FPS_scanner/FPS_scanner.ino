@@ -54,6 +54,7 @@ void setup() {
 
   // Debug
   Serial.begin(115200);
+  Serial.println(F("Start"));
 
   // LCD
   lcd.begin(16, 2);
@@ -63,7 +64,7 @@ void setup() {
 
   // FPS
   fps.Open(); //send serial command to initialize fps
-  //fps.DeleteAll(); // Clear the DB
+  fps.DeleteAll(); // Clear the DB
 
   // AES256-GCM cypher
   gcm.setKey(key, sizeof(key));
@@ -77,6 +78,9 @@ void setup() {
 // Method to send simple code messages to the server
 // Data buffer must have 28 additional bytes reserved for IV+tag, with the actual data starting at byte 13
 void sendEncrypted(uint8_t data[], const uint8_t unencrypted_len) {
+
+  // Listen to ESP8266 serial channel
+  esp_serial->listen();
 
   // Generate random IV
   *((uint32_t*) data) = (unsigned long) random(LONG_MAX) + LONG_MIN;
@@ -92,8 +96,13 @@ void sendEncrypted(uint8_t data[], const uint8_t unencrypted_len) {
 
 // Method to receive encrypted data and convert to usable data
 uint8_t* receiveEncrypted(const uint16_t unencrypted_len) {
+
+  // Listen to ESP8266 serial channel
+  esp_serial->listen();
+
   uint8_t* _buffer = (uint8_t*) malloc(unencrypted_len + 28); // Encrypted data has additional 12 bytes of IV + 16 bytes of tag
   esp->recv(_buffer, unencrypted_len + 28, 5000);
+
   gcm.setIV(_buffer, 12); // IV is stored in the first 12 bytes
   gcm.decrypt(_buffer, _buffer + 12, unencrypted_len);
   if (!gcm.checkTag(_buffer + 12 + unencrypted_len, 16)) {
@@ -154,19 +163,19 @@ bool SyncDB() {
       delete partial_sync_code;
 
       uint8_t last_enrolled = -1;
-      uint8_t num_runs = enrolled_count / 32;
-      if (enrolled_count % 32) num_runs++;
+      uint8_t num_runs = enrolled_count / 8;
+      if (enrolled_count % 8) num_runs++;
       uint8_t* id_enrolled_array = new uint8_t[enrolled_count]; // This list holds the IDs of the hashed fingerprints, used for deletions
 
       for (uint8_t sync_run = 0; sync_run < num_runs; sync_run++) {
 
         uint8_t num_fingerprints;
 
-        if (sync_run == num_runs - 1) num_fingerprints = enrolled_count % 32;
-        else num_fingerprints = 32;
+        if (sync_run == num_runs - 1) num_fingerprints = enrolled_count % 8;
+        else num_fingerprints = 8;
 
         uint8_t* hash_array = new uint8_t[num_fingerprints * 4 + 28]; // Careful with memory here
-        HashFingerprintDDBB(hash_array, id_enrolled_array + sync_run * 32, last_enrolled, num_fingerprints); // Generate a list of hashes from every existing fingerprint in the FPS
+        HashFingerprintDDBB(hash_array, id_enrolled_array + sync_run * 8, last_enrolled, num_fingerprints); // Generate a list of hashes from every existing fingerprint in the FPS
 
         // Send hash list
         sendEncrypted(hash_array, num_fingerprints * 4);
@@ -242,55 +251,55 @@ void SyncAdd(uint8_t additions_buffer[], uint8_t num_additions) {
 
 bool SyncFingerprint(const uint8_t template_hash[4]) {
 
-  // Listen to the ESP serial channel
-  esp_serial->listen();
+  /* LEGACY: UNUSED
 
-  // Identify yourself to the server and declare intentions
-  uint8_t* sync_fingerprint_code = new uint8_t[5 + 28];
-  sync_fingerprint_code[12] = 1;
-  sync_fingerprint_code[13] = 253;
-  sync_fingerprint_code[14] = 0;
-  sync_fingerprint_code[15] = 1;
-  sync_fingerprint_code[16] = 34;
-  sendEncrypted(sync_fingerprint_code, 5); // 01 FD 00 01 22
-  delete sync_fingerprint_code;
+    // Identify yourself to the server and declare intentions
+    uint8_t* sync_fingerprint_code = new uint8_t[5 + 28];
+    sync_fingerprint_code[12] = 1;
+    sync_fingerprint_code[13] = 253;
+    sync_fingerprint_code[14] = 0;
+    sync_fingerprint_code[15] = 1;
+    sync_fingerprint_code[16] = 34;
+    sendEncrypted(sync_fingerprint_code, 5); // 01 FD 00 01 22
+    delete sync_fingerprint_code;
 
-  // Receive the reply
-  uint8_t* reply_buffer = receiveEncrypted(5);
+    // Receive the reply
+    uint8_t* reply_buffer = receiveEncrypted(5);
 
-  // Check reply
-  bool sync_failed = true;
-  if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
-    free(reply_buffer);
+    // Check reply
+    bool sync_failed = true;
+    if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
+      free(reply_buffer);
 
-    // Ask the DDBB to upload the fingerprint requested
-    uint8_t* request_code = new uint8_t[9 + 28];
-    request_code[12] = 1;
-    request_code[13] = 253;
-    request_code[14] = 0;
-    request_code[15] = 1;
-    request_code[16] = 48;
-    request_code[17] = template_hash[0];
-    request_code[18] = template_hash[1];
-    request_code[19] = template_hash[2];
-    request_code[20] = template_hash[3];
-    sendEncrypted(request_code, 9);
-    delete request_code;
+  */
 
-    uint8_t* data = receiveEncrypted(498);
+  // Ask the DDBB to upload the fingerprint requested
+  uint8_t* request_code = new uint8_t[9 + 28];
+  request_code[12] = 1;
+  request_code[13] = 253;
+  request_code[14] = 0;
+  request_code[15] = 1;
+  request_code[16] = 48;
+  request_code[17] = template_hash[0];
+  request_code[18] = template_hash[1];
+  request_code[19] = template_hash[2];
+  request_code[20] = template_hash[3];
+  sendEncrypted(request_code, 9);
+  delete request_code;
 
-    // find open enroll id
-    int enrollid = 0;
-    bool usedid = true;
-    while (usedid == true) {
-      usedid = fps.CheckEnrolled(enrollid);
-      if (usedid == true) enrollid++;
-    }
+  uint8_t* data = receiveEncrypted(498);
 
-    sync_failed = fps.SetTemplate(data, enrollid, true);
-    free(data);
-    esp_serial->listen();
-  } else free(reply_buffer);
+  // find open enroll id
+  int enrollid = 0;
+  bool usedid = true;
+  while (usedid == true) {
+    usedid = fps.CheckEnrolled(enrollid);
+    if (usedid == true) enrollid++;
+  }
+
+  bool sync_failed = fps.SetTemplate(data, enrollid, true);
+  free(data);
+  //} else free(reply_buffer);
 
   if (!sync_failed) return true;
   else return false;
@@ -360,7 +369,6 @@ void Buzz() {
 
 void loop()
 {
-
   fps.SetLED(true);   //turn on LED so fps can see fingerprint
   lcd.setCursor(0, 0);
   lcd.print(F("Waiting finger  "));
@@ -371,12 +379,6 @@ void loop()
     fps.CaptureFinger(false);
     int id = fps.Identify1_N();
 
-    /*Note:  GT-521F52 can hold 3000 fingerprint templates
-             GT-521F32 can hold 200 fingerprint templates
-              GT-511C3 can hold 200 fingerprint templates.
-             GT-511C1R can hold 20 fingerprint templates.
-      Make sure to change the id depending on what
-      model you are using */
     if (id < 200) //<- change id value depending model you are using
     { //if the fingerprint matches, provide the matching template ID
       Serial.print(F("Verified ID:"));
