@@ -64,7 +64,7 @@ void setup() {
 
   // FPS
   fps.Open(); //send serial command to initialize fps
-  fps.DeleteAll(); // Clear the DB
+  //fps.DeleteAll(); // Clear the DB
 
   // AES256-GCM cypher
   gcm.setKey(key, sizeof(key));
@@ -77,7 +77,7 @@ void setup() {
 
 // Method to send simple code messages to the server
 // Data buffer must have 28 additional bytes reserved for IV+tag, with the actual data starting at byte 13
-void sendEncrypted(uint8_t data[], const uint8_t unencrypted_len) {
+void sendEncrypted(uint8_t data[], const uint16_t unencrypted_len) {
 
   // Listen to ESP8266 serial channel
   esp_serial->listen();
@@ -200,16 +200,6 @@ bool SyncDB() {
       }
       delete id_enrolled_array;
 
-      // Tell the server you are ready
-      uint8_t* ready_sync_code = new uint8_t[5 + 28];
-      ready_sync_code[12] = 1;
-      ready_sync_code[13] = 253;
-      ready_sync_code[14] = 0;
-      ready_sync_code[15] = 1;
-      ready_sync_code[16] = 85;
-      sendEncrypted(ready_sync_code, 5); // 01 FD 00 01 55
-      delete ready_sync_code;
-
     }
 
     while (true) { // Keep processing received packets until the server is done (Reply = 0D)
@@ -250,28 +240,6 @@ void SyncAdd(uint8_t additions_buffer[], uint8_t num_additions) {
 }
 
 bool SyncFingerprint(const uint8_t template_hash[4]) {
-
-  /* LEGACY: UNUSED
-
-    // Identify yourself to the server and declare intentions
-    uint8_t* sync_fingerprint_code = new uint8_t[5 + 28];
-    sync_fingerprint_code[12] = 1;
-    sync_fingerprint_code[13] = 253;
-    sync_fingerprint_code[14] = 0;
-    sync_fingerprint_code[15] = 1;
-    sync_fingerprint_code[16] = 34;
-    sendEncrypted(sync_fingerprint_code, 5); // 01 FD 00 01 22
-    delete sync_fingerprint_code;
-
-    // Receive the reply
-    uint8_t* reply_buffer = receiveEncrypted(5);
-
-    // Check reply
-    bool sync_failed = true;
-    if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
-      free(reply_buffer);
-
-  */
 
   // Ask the DDBB to upload the fingerprint requested
   uint8_t* request_code = new uint8_t[9 + 28];
@@ -315,14 +283,15 @@ void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last
     last_enrolled++;
     if (fps.CheckEnrolled(last_enrolled)) {
 
-      uint8_t data[500];
+      uint8_t* data = new uint8_t[498 + 2];
       bool sync_failed = true;
 
       while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
         sync_failed = fps.GetTemplate(last_enrolled, data);
       }
 
-      ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 498); // This cast is iffy, but should work
+      ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 498);
+      delete data;
       id_array[count++] = last_enrolled;
       if (count == enrolled_count) return;
     }
