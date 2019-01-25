@@ -37,6 +37,9 @@ FPS_GT511C3 fps(8, 7, 57600); // Arduino RX (GT TX), Arduino TX (GT RX)
 // Buzzer
 const int buzzer = 9; //buzzer to arduino pin 9
 
+// Touch Interface
+const uint8_t touch = 13;
+
 // initialize the library by associating any needed LCD interface pin
 // with the arduino pin number it is connected to
 const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
@@ -60,6 +63,9 @@ void setup() {
 
   // Buzzer
   pinMode(buzzer, OUTPUT); // Set buzzer - pin 9 as an output
+
+  // Touch Interface
+  pinMode(touch, INPUT); // This pin notifies Arduino of FPS touch
 
   // FPS
   fps.Open(); //send serial command to initialize fps
@@ -155,8 +161,8 @@ bool syncFingerprint(int id) {
     uint8_t* data = new uint8_t[500 + 28]; // Template (498 bytes) + 2 checksum bytes + 28 bytes for GCM cypher
 
     while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
-        sync_failed = fps.GetTemplate(id, data+12); // FPS will get the fingerprint and send it to the ESP
-      }
+      sync_failed = fps.GetTemplate(id, data + 12); // FPS will get the fingerprint and send it to the ESP
+    }
 
     if (!sync_failed) sendEncrypted(data, 500);
     delete data;
@@ -173,8 +179,6 @@ bool syncFingerprint(int id) {
 
 void Enroll() {
 
-  fps.SetLED(true);   //turn on LED so fps can see fingerprint
-
   // find open enroll id
   int enrollid = 0;
   bool usedid = true;
@@ -189,42 +193,79 @@ void Enroll() {
   lcd.print(enrollid);
 
   // Enroll
+  bool bret;
+  int iret = 0;
   Buzz();
   lcd.setCursor(0, 1);
   lcd.print(F("  Press finger  "));
-  while (fps.IsPressFinger() == false) delay(100);
-  bool bret = fps.CaptureFinger(true);
-  int iret = 0;
+
+  while (true) {
+    if (digitalRead(touch)) {
+      fps.SetLED(true);
+      if (fps.IsPressFinger()) {
+        bret = fps.CaptureFinger(true);
+        if (bret != false) fps.Enroll1();
+        Buzz();
+        break;
+      }
+    } else {
+      fps.SetLED(false);
+      delay(100);
+    }
+  }
+
   if (bret != false)
   {
-    Buzz();
     lcd.setCursor(0, 1);
     lcd.print(F(" Remove finger  "));
-    fps.Enroll1();
     while (fps.IsPressFinger() == true) delay(100);
     Buzz();
     lcd.setCursor(0, 1);
     lcd.print(F("  Press finger  "));
-    while (fps.IsPressFinger() == false) delay(100);
-    bret = fps.CaptureFinger(true);
+
+    while (true) {
+      if (digitalRead(touch)) {
+        fps.SetLED(true);
+        if (fps.IsPressFinger()) {
+          bret = fps.CaptureFinger(true);
+          if (bret != false) fps.Enroll2();
+          Buzz();
+          break;
+        }
+      } else {
+        fps.SetLED(false);
+        delay(100);
+      }
+    }
+
     if (bret != false)
     {
-      Buzz();
       lcd.setCursor(0, 1);
       lcd.print(F(" Remove finger  "));
-      fps.Enroll2();
       while (fps.IsPressFinger() == true) delay(100);
       Buzz();
       lcd.setCursor(0, 1);
       lcd.print(F("  Press finger  "));
-      while (fps.IsPressFinger() == false) delay(100);
-      bret = fps.CaptureFinger(true);
+
+      while (true) {
+        if (digitalRead(touch)) {
+          fps.SetLED(true);
+          if (fps.IsPressFinger()) {
+            bret = fps.CaptureFinger(true);
+            if (bret != false) iret = fps.Enroll3();
+            Buzz();
+            break;
+          }
+        } else {
+          fps.SetLED(false);
+          delay(100);
+        }
+      }
+
       if (bret != false)
       {
-        Buzz();
         lcd.setCursor(0, 1);
         lcd.print(F(" Remove finger  "));
-        iret = fps.Enroll3();
         while (fps.IsPressFinger() == true) delay(100);
         if (iret == 0)
         {

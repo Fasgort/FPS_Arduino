@@ -38,6 +38,9 @@ FPS_GT511C3 fps(8, 7, 57600); // Arduino RX (GT TX), Arduino TX (GT RX)
 // Buzzer
 const uint8_t buzzer = 9; //buzzer to arduino pin 9
 
+// Touch Interface
+const uint8_t touch = 13;
+
 // initialize the library by associating any needed LCD interface pin
 // with the arduino pin number it is connected to
 const uint8_t rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
@@ -61,6 +64,9 @@ void setup() {
 
   // Buzzer
   pinMode(buzzer, OUTPUT); // Set buzzer - pin 9 as an output
+
+  // Touch Interface
+  pinMode(touch, INPUT); // This pin notifies Arduino of FPS touch
 
   // FPS
   fps.Open(); //send serial command to initialize fps
@@ -267,7 +273,6 @@ bool SyncFingerprint(const uint8_t template_hash[4]) {
 
   bool sync_failed = fps.SetTemplate(data, enrollid, true);
   free(data);
-  //} else free(reply_buffer);
 
   if (!sync_failed) return true;
   else return false;
@@ -338,34 +343,40 @@ void Buzz() {
 
 void loop()
 {
-  fps.SetLED(true);   //turn on LED so fps can see fingerprint
   lcd.setCursor(0, 0);
   lcd.print(F("Waiting finger  "));
 
-  // Identify fingerprint test
-  if (fps.IsPressFinger())
-  {
-    fps.CaptureFinger(false);
-    int id = fps.Identify1_N();
+  if (digitalRead(touch)) {
+    fps.SetLED(true);   //turn on LED so fps can see fingerprint
 
-    if (id < 200) //<- change id value depending model you are using
-    { //if the fingerprint matches, provide the matching template ID
-      Serial.print(F("Verified ID:"));
-      Serial.println(id);
-      lcd.setCursor(0, 1);
-      lcd.print(F("  Found ID #"));
-      lcd.print(id);
+    // Identify fingerprint test
+    if (fps.IsPressFinger())
+    {
+      fps.CaptureFinger(false);
+      fps.SetLED(false);
+      Buzz();
+      int id = fps.Identify1_N();
+
+      if (id < 200) //<- change id value depending model you are using
+      { //if the fingerprint matches, provide the matching template ID
+        Serial.print(F("Verified ID:"));
+        Serial.println(id);
+        lcd.setCursor(0, 1);
+        lcd.print(F("  Found ID #"));
+        lcd.print(id);
+      }
+      else
+      { //if unable to recognize
+        Serial.println(F("Finger not found"));
+        lcd.setCursor(0, 1);
+        lcd.print(F("  Not found     "));
+      }
+      Buzz();
+      delay(3000);
+      Buzz();
+      lcd.clear();
     }
-    else
-    { //if unable to recognize
-      Serial.println(F("Finger not found"));
-      lcd.setCursor(0, 1);
-      lcd.print(F("  Not found     "));
-    }
-    Buzz();
-    delay(3000);
-    Buzz();
-    lcd.clear();
-  }
+
+  } else fps.SetLED(false);
   delay(100);
 }
