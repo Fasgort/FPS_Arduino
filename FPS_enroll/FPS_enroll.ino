@@ -131,14 +131,14 @@ bool syncFingerprint(int id) {
   initiateConnection();
 
   // Identify yourself to the server and declare intentions
-  uint8_t* enroller_code = new uint8_t[5 + 28];
+  uint8_t* enroller_code = (uint8_t*) malloc(5 + 28);
   enroller_code[12] = 1;
   enroller_code[13] = 238;
   enroller_code[14] = 0;
   enroller_code[15] = 1;
   enroller_code[16] = 17;
   sendEncrypted(enroller_code, 5); // 01 EE 00 01 11
-  delete enroller_code;
+  free(enroller_code);
 
   // Receive the reply
   uint8_t* reply_buffer = receiveEncrypted(5); // Don't forget to DELETE
@@ -149,23 +149,23 @@ bool syncFingerprint(int id) {
     free(reply_buffer);
 
     // Initiate sync fingerprint process in the server
-    uint8_t* sending_code = new uint8_t[5 + 28];
+    uint8_t* sending_code = (uint8_t*) malloc(5 + 28);
     sending_code[12] = 1;
     sending_code[13] = 238;
     sending_code[14] = 0;
     sending_code[15] = 1;
     sending_code[16] = 29;
     sendEncrypted(sending_code, 5); // 01 EE 00 01 1D
-    delete sending_code;
+    free(sending_code);
 
-    uint8_t* data = new uint8_t[500 + 28]; // Template (498 bytes) + 2 checksum bytes + 28 bytes for GCM cypher
+    uint8_t* data = (uint8_t*) malloc(500 + 28); // Template (498 bytes) + 2 checksum bytes + 28 bytes for GCM cypher
 
     while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
       sync_failed = fps.GetTemplate(id, data + 12); // FPS will get the fingerprint and send it to the ESP
     }
 
     if (!sync_failed) sendEncrypted(data, 500);
-    delete data;
+    free(data);
 
   } else free(reply_buffer);
 
@@ -267,6 +267,7 @@ void Enroll() {
         lcd.setCursor(0, 1);
         lcd.print(F(" Remove finger  "));
         while (fps.IsPressFinger() == true) delay(100);
+        Buzz();
         if (iret == 0)
         {
           lcd.setCursor(0, 1);

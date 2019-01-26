@@ -128,14 +128,14 @@ bool SyncDB() {
   initiateConnection();
 
   // Identify yourself to the server and declare intentions
-  uint8_t* sync_start_code = new uint8_t[5 + 28];
+  uint8_t* sync_start_code = (uint8_t*) malloc(5 + 28);
   sync_start_code[12] = 1;
   sync_start_code[13] = 253;
   sync_start_code[14] = 0;
   sync_start_code[15] = 1;
   sync_start_code[16] = 34;
   sendEncrypted(sync_start_code, 5); // 01 FD 00 01 22
-  delete sync_start_code;
+  free(sync_start_code);
 
   // Receive the reply
   uint8_t* reply_buffer = receiveEncrypted(5);
@@ -148,17 +148,17 @@ bool SyncDB() {
 
     if (enrolled_count == 0) {
       // Ask for every fingerprint, no deletions
-      uint8_t* full_sync_code = new uint8_t[5 + 28];
+      uint8_t* full_sync_code = (uint8_t*) malloc(5 + 28);
       full_sync_code[12] = 1;
       full_sync_code[13] = 253;
       full_sync_code[14] = 0;
       full_sync_code[15] = 1;
       full_sync_code[16] = 253;
       sendEncrypted(full_sync_code, 5); // 01 FD 00 01 FD
-      delete full_sync_code;
+      free(full_sync_code);
     } else {
       // Ask for a partial DDBB download
-      uint8_t* partial_sync_code = new uint8_t[6 + 28];
+      uint8_t* partial_sync_code = (uint8_t*) malloc(6 + 28);
       partial_sync_code[12] = 1;
       partial_sync_code[13] = 253;
       partial_sync_code[14] = 0;
@@ -166,12 +166,12 @@ bool SyncDB() {
       partial_sync_code[16] = 93;
       partial_sync_code[17] = enrolled_count;
       sendEncrypted(partial_sync_code, 6); // 01 FD 00 01 5D enrolled_count
-      delete partial_sync_code;
+      free(partial_sync_code);
 
       uint8_t last_enrolled = -1;
       uint8_t num_runs = enrolled_count / 8;
       if (enrolled_count % 8) num_runs++;
-      uint8_t* id_enrolled_array = new uint8_t[enrolled_count]; // This list holds the IDs of the hashed fingerprints, used for deletions
+      uint8_t* id_enrolled_array = (uint8_t*) malloc(enrolled_count); // This list holds the IDs of the hashed fingerprints, used for deletions
 
       for (uint8_t sync_run = 0; sync_run < num_runs; sync_run++) {
 
@@ -180,12 +180,12 @@ bool SyncDB() {
         if (sync_run == num_runs - 1) num_fingerprints = enrolled_count % 8;
         else num_fingerprints = 8;
 
-        uint8_t* hash_array = new uint8_t[num_fingerprints * 4 + 28]; // Careful with memory here
+        uint8_t* hash_array = (uint8_t*) malloc(num_fingerprints * 4 + 28); // Careful with memory here
         HashFingerprintDDBB(hash_array, id_enrolled_array + sync_run * 8, last_enrolled, num_fingerprints); // Generate a list of hashes from every existing fingerprint in the FPS
 
         // Send hash list
         sendEncrypted(hash_array, num_fingerprints * 4);
-        delete hash_array;
+        free(hash_array);
 
       }
 
@@ -204,7 +204,7 @@ bool SyncDB() {
           break;
         } else free(sync_reply_buffer);
       }
-      delete id_enrolled_array;
+      free(id_enrolled_array);
 
     }
 
@@ -248,7 +248,7 @@ void SyncAdd(uint8_t additions_buffer[], uint8_t num_additions) {
 bool SyncFingerprint(const uint8_t template_hash[4]) {
 
   // Ask the DDBB to upload the fingerprint requested
-  uint8_t* request_code = new uint8_t[9 + 28];
+  uint8_t* request_code = (uint8_t*) malloc(9 + 28);
   request_code[12] = 1;
   request_code[13] = 253;
   request_code[14] = 0;
@@ -259,7 +259,7 @@ bool SyncFingerprint(const uint8_t template_hash[4]) {
   request_code[19] = template_hash[2];
   request_code[20] = template_hash[3];
   sendEncrypted(request_code, 9);
-  delete request_code;
+  free(request_code);
 
   uint8_t* data = receiveEncrypted(498);
 
@@ -288,7 +288,7 @@ void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last
     last_enrolled++;
     if (fps.CheckEnrolled(last_enrolled)) {
 
-      uint8_t* data = new uint8_t[498 + 2];
+      uint8_t* data = (uint8_t*) malloc(498 + 2);
       bool sync_failed = true;
 
       while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
@@ -296,7 +296,7 @@ void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last
       }
 
       ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 498);
-      delete data;
+      free(data);
       id_array[count++] = last_enrolled;
       if (count == enrolled_count) return;
     }
