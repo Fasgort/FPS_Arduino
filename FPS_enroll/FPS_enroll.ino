@@ -125,7 +125,7 @@ uint8_t* receiveEncrypted(const uint16_t unencrypted_len) {
   }
 }
 
-bool syncFingerprint(int id) {
+bool syncFingerprint(uint16_t id) {
 
   // Connect to the server
   initiateConnection();
@@ -144,7 +144,7 @@ bool syncFingerprint(int id) {
   uint8_t* reply_buffer = receiveEncrypted(5); // Don't forget to DELETE
 
   // Send the data if the reply is okay
-  bool sync_failed = true;
+  uint8_t sync_failed = 1;
   if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
     free(reply_buffer);
 
@@ -158,13 +158,14 @@ bool syncFingerprint(int id) {
     sendEncrypted(sending_code, 5); // 01 EE 00 01 1D
     free(sending_code);
 
-    uint8_t* data = (uint8_t*) malloc(500 + 28); // Template (498 bytes) + 2 checksum bytes + 28 bytes for GCM cypher
+    uint8_t* data = (uint8_t*) malloc(500 + 28 + 2); // Template (498 bytes) + 2 checksum bytes + 28 bytes for GCM cypher + 2 ID
+    *((uint16_t*) data + 6) = id; // Set the ID used for the fingerprint after the IV code
 
     while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
-      sync_failed = fps.GetTemplate(id, data + 12); // FPS will get the fingerprint and send it to the ESP
+      sync_failed = fps.GetTemplate(id, data + 14); // FPS will get the fingerprint and send it to the ESP
     }
 
-    if (!sync_failed) sendEncrypted(data, 500);
+    if (!sync_failed) sendEncrypted(data, 502);
     free(data);
 
   } else free(reply_buffer);
