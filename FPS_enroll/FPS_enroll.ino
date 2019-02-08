@@ -141,7 +141,7 @@ bool syncFingerprint(uint16_t id) {
   free(enroller_code);
 
   // Receive the reply
-  uint8_t* reply_buffer = receiveEncrypted(5); // Don't forget to DELETE
+  uint8_t* reply_buffer = receiveEncrypted(5);
 
   // Send the data if the reply is okay
   uint8_t sync_failed = 1;
@@ -341,8 +341,8 @@ void initiateConnection() {
 
   // Connect to wifi and start a UDP connection
   // Retry steps if failed
-  while (!esp->joinAP(F("$WIFI_SSID$", "$WIFI_PASS$")));
-  while (!esp->registerUDP(F("10.0.0.2"), 40444));
+  while (!esp->joinAP(F("$WIFI_SSID$"), F("$WIFI_PASS$"))) delay(1000);
+  while (!esp->registerUDP(F("10.0.0.2"), 40444)) delay(1000);
 
   // DEBUG - Print the current connection details
   Serial.println(esp->getLocalIP());

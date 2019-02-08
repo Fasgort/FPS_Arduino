@@ -171,7 +171,7 @@ bool SyncDB() {
       uint8_t last_enrolled = -1;
       uint8_t num_runs = enrolled_count / 8;
       if (enrolled_count % 8) num_runs++;
-      uint8_t* id_enrolled_array = (uint8_t*) malloc(enrolled_count); // This list holds the IDs of the hashed fingerprints, used for deletions
+      uint8_t* id_enrolled_array = (uint8_t*) malloc(enrolled_count); // This list holds the IDs of the hashed fingerprints
 
       for (uint8_t sync_run = 0; sync_run < num_runs; sync_run++) {
 
@@ -261,17 +261,13 @@ bool SyncFingerprint(const uint8_t template_hash[4]) {
   sendEncrypted(request_code, 9);
   free(request_code);
 
-  uint8_t* data = receiveEncrypted(498);
+  uint8_t* data = receiveEncrypted(500); // 2 bytes ID + 498 data
 
-  // find open enroll id
-  int enrollid = 0;
-  bool usedid = true;
-  while (usedid == true) {
-    usedid = fps.CheckEnrolled(enrollid);
-    if (usedid == true) enrollid++;
-  }
+  // check ID position
+  uint16_t enrollid = *((uint16_t*) data);
+  if (fps.CheckEnrolled(enrollid)) fps.DeleteID(enrollid);
 
-  bool sync_failed = fps.SetTemplate(data, enrollid, true);
+  bool sync_failed = fps.SetTemplate(data + 2, enrollid, true);
   free(data);
 
   if (!sync_failed) return true;
@@ -280,6 +276,7 @@ bool SyncFingerprint(const uint8_t template_hash[4]) {
 }
 
 // Generate a list of hashes from every existing fingerprint in the FPS
+// WARNING: Inconsistent use of 8 and 16 bits IDs. Other models of the FPS require 16 bits only. May not fix this yet.
 void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last_enrolled, uint8_t enrolled_count) {
 
   uint8_t count = 0;
@@ -288,14 +285,16 @@ void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last
     last_enrolled++;
     if (fps.CheckEnrolled(last_enrolled)) {
 
-      uint8_t* data = (uint8_t*) malloc(498 + 2);
+      uint8_t* data = (uint8_t*) malloc(500 + 2);
+      *((uint16_t*) data) = last_enrolled;
+
       bool sync_failed = true;
 
       while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
-        sync_failed = fps.GetTemplate(last_enrolled, data);
+        sync_failed = fps.GetTemplate(last_enrolled, data + 2);
       }
 
-      ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 498);
+      ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 500);
       free(data);
       id_array[count++] = last_enrolled;
       if (count == enrolled_count) return;
@@ -316,8 +315,8 @@ void initiateConnection() {
 
   // Connect to wifi and start a UDP connection
   // Retry steps if failed
-  while (!esp->joinAP(F("$WIFI_SSID$"), F("$WIFI_PASS$")));
-  while (!esp->registerUDP(F("10.0.0.2"), 40444));
+  while (!esp->joinAP(F("$WIFI_SSID$"), F("$WIFI_PASS$"))) delay(1000);
+  while (!esp->registerUDP(F("10.0.0.2"), 40444)) delay(1000);
 
   // DEBUG - Print the current connection details
   Serial.println(esp->getLocalIP());
