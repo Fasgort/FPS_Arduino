@@ -303,6 +303,50 @@ void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last
 
 }
 
+// Send to the server a hash of the fingerprint reading
+bool sendFingerprintRead(uint16_t id) {
+
+  // Connect to the server
+  initiateConnection();
+
+  // Identify yourself to the server and declare intentions
+  uint8_t* read_code = (uint8_t*) malloc(5 + 28);
+  read_code[12] = 1;
+  read_code[13] = 253;
+  read_code[14] = 0;
+  read_code[15] = 1;
+  read_code[16] = 200;
+  sendEncrypted(read_code, 5); // 01 FD 00 01 C8
+  free(read_code);
+
+  // Receive the reply
+  uint8_t* reply_buffer = receiveEncrypted(5);
+
+  // Send the data if the reply is okay
+  uint8_t sync_failed = 1;
+  if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
+    free(reply_buffer);
+
+    uint8_t* data = (uint8_t*) malloc(500 + 28 + 2); // Template (498 bytes) + 2 checksum bytes + 28 bytes for GCM cypher + 2 ID
+    *((uint16_t*) data + 6) = id; // Set the ID used for the fingerprint after the IV code
+
+    while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
+      sync_failed = fps.GetTemplate(id, data + 14); // FPS will get the fingerprint and send it to the ESP
+    }
+
+    if (!sync_failed) sendEncrypted(data, 502);
+    free(data);
+
+  } else free(reply_buffer);
+
+  // Disconnect
+  dropConnection();
+
+  if (!sync_failed) return true;
+  else return false;
+
+}
+
 void initiateConnection() {
   // Get the ESP online with a clean state
   esp_serial->listen();
@@ -363,6 +407,7 @@ void loop()
         lcd.setCursor(0, 1);
         lcd.print(F("  Found ID #"));
         lcd.print(id);
+        sendFingerprintRead(id);
       }
       else
       { //if unable to recognize
