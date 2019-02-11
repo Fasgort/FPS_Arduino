@@ -76,7 +76,8 @@ void setup() {
   gcm.setKey(key, sizeof(key));
 
   // Do the syncDB routine once. Restart to redo it.
-  SyncDB();
+  initiateConnection();
+  while (!SyncDB());
   Buzz(); // Buzz to tell the user the FPS is ready.
 
 }
@@ -123,9 +124,6 @@ uint8_t* receiveEncrypted(const uint16_t unencrypted_len) {
 
 // Here we go
 bool SyncDB() {
-
-  // Connect to the server
-  initiateConnection();
 
   // Identify yourself to the server and declare intentions
   uint8_t* sync_start_code = (uint8_t*) malloc(5 + 28);
@@ -224,11 +222,9 @@ bool SyncDB() {
       } else free(sync_reply_buffer);
     }
 
-    dropConnection();
     return true;
   } else {
     free(reply_buffer);
-    dropConnection();
     return false;
   }
 }
@@ -306,9 +302,6 @@ void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last
 // Send to the server a hash of the fingerprint reading
 bool sendFingerprintRead(uint16_t id) {
 
-  // Connect to the server
-  initiateConnection();
-
   // Identify yourself to the server and declare intentions
   uint8_t* read_code = (uint8_t*) malloc(5 + 28);
   read_code[12] = 1;
@@ -339,16 +332,13 @@ bool sendFingerprintRead(uint16_t id) {
 
   } else free(reply_buffer);
 
-  // Disconnect
-  dropConnection();
-
   if (!sync_failed) return true;
   else return false;
 
 }
 
+// Get the ESP online with a clean state
 void initiateConnection() {
-  // Get the ESP online with a clean state
   esp_serial->listen();
   while (esp_serial->available() > 0) esp_serial->read();
   while (!esp->kick()) delay(1000);
@@ -365,17 +355,6 @@ void initiateConnection() {
   // DEBUG - Print the current connection details
   Serial.println(esp->getLocalIP());
   Serial.println(esp->getIPStatus());
-}
-
-void dropConnection() {
-  // Try to leave the ESP offline with a clean state
-  esp_serial->listen();
-  while (!esp->kick()) delay(1000);
-  while (esp_serial->available() > 0) esp_serial->read();
-  esp->unregisterUDP();
-  esp->leaveAP();
-  esp->restart();
-  while (esp_serial->available() > 0) esp_serial->read();
 }
 
 void Buzz() {
@@ -407,7 +386,7 @@ void loop()
         lcd.setCursor(0, 1);
         lcd.print(F("  Found ID #"));
         lcd.print(id);
-        sendFingerprintRead(id);
+        sendFingerprintRead(id); // To-implement: Use case when the entrance is disallowed
       }
       else
       { //if unable to recognize
@@ -416,7 +395,7 @@ void loop()
         lcd.print(F("  Not found     "));
       }
       Buzz();
-      delay(3000);
+      delay(1000);
       Buzz();
       lcd.clear();
     }
