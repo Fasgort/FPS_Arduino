@@ -50,6 +50,9 @@ LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 GCM<AESTiny128> gcm;
 const uint8_t key[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6};
 
+// Sync counter
+uint16_t sync_counter = 0;
+
 void setup() {
 
   // RandomSeed
@@ -79,6 +82,7 @@ void setup() {
   initiateConnection();
   while (!SyncDB());
   Buzz(); // Buzz to tell the user the FPS is ready.
+  delay(1000);
 
 }
 
@@ -125,6 +129,11 @@ uint8_t* receiveEncrypted(const uint16_t unencrypted_len) {
 // Here we go
 bool SyncDB() {
 
+  lcd.setCursor(0, 0);
+  lcd.print(F("Synchronizing DB"));
+  lcd.setCursor(0, 1);
+  lcd.print(F("                "));
+
   // Identify yourself to the server and declare intentions
   uint8_t* sync_start_code = (uint8_t*) malloc(5 + 28);
   sync_start_code[12] = 1;
@@ -138,9 +147,15 @@ bool SyncDB() {
   // Receive the reply
   uint8_t* reply_buffer = receiveEncrypted(5);
 
+  lcd.setCursor(0, 1);
+  lcd.print(F("Server reply    "));
+
   // Check reply
   if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
     free(reply_buffer);
+
+    lcd.setCursor(0, 1);
+    lcd.print(F("Server reply OK "));
 
     uint8_t enrolled_count = fps.GetEnrollCount(); // Get the number of enrolled fingerprints (Max 200 for our FPS, if using another FPS, change type to uint16_t).
 
@@ -187,6 +202,9 @@ bool SyncDB() {
 
       }
 
+      lcd.setCursor(0, 1);
+      lcd.print(F("Updating...     "));
+
       while (true) { // Keep processing received packets until the server is done (Reply = 0D)
         uint8_t* sync_reply_buffer = receiveEncrypted(6); // If the DDBB is slow generating the list of fingerprint hashes and replying, this may fail.
 
@@ -222,9 +240,13 @@ bool SyncDB() {
       } else free(sync_reply_buffer);
     }
 
+    lcd.setCursor(0, 1);
+    lcd.print(F("Update succesful"));
     return true;
   } else {
     free(reply_buffer);
+    lcd.setCursor(0, 1);
+    lcd.print(F("Update failed!  "));
     return false;
   }
 }
@@ -339,6 +361,12 @@ bool sendFingerprintRead(uint16_t id) {
 
 // Get the ESP online with a clean state
 void initiateConnection() {
+
+  lcd.setCursor(0, 0);
+  lcd.print(F("Connecting...   "));
+  lcd.setCursor(0, 1);
+  lcd.print(F("                "));
+
   esp_serial->listen();
   while (esp_serial->available() > 0) esp_serial->read();
   while (!esp->kick()) delay(1000);
@@ -351,6 +379,9 @@ void initiateConnection() {
   // Retry steps if failed
   while (!esp->joinAP(F("$WIFI_SSID$"), F("$WIFI_PASS$"))) delay(1000);
   while (!esp->registerUDP(F("10.0.0.2"), 40444)) delay(1000);
+
+  lcd.setCursor(0, 1);
+  lcd.print(F("  Successful!   "));
 
   // DEBUG - Print the current connection details
   Serial.println(esp->getLocalIP());
@@ -365,8 +396,11 @@ void Buzz() {
 
 void loop()
 {
+  // Better than lcd.clear() to avoid blinking
   lcd.setCursor(0, 0);
   lcd.print(F("Waiting finger  "));
+  lcd.setCursor(0, 1);
+  lcd.print(F("                "));
 
   if (digitalRead(touch)) {
     fps.SetLED(true);   //turn on LED so fps can see fingerprint
@@ -397,9 +431,9 @@ void loop()
       Buzz();
       delay(1000);
       Buzz();
-      lcd.clear();
     }
 
   } else fps.SetLED(false);
+  if (++sync_counter == 0) while (!SyncDB()); // Sync the DB every 2^16 cycles
   delay(100);
 }
