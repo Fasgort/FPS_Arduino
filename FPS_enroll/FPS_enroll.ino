@@ -55,10 +55,6 @@ void setup() {
   // RandomSeed
   randomSeed(analogRead(A2) * 16777216 + analogRead(A3) * 65536 + analogRead(A4) * 256 + analogRead(A5)); // Unused pins
 
-  // Debug
-  Serial.begin(115200);
-  Serial.println(F("Start"));
-
   // LCD
   lcd.begin(16, 2);
 
@@ -127,7 +123,13 @@ uint8_t* receiveEncrypted(const uint16_t unencrypted_len) {
   }
 }
 
+// Sync routine
 bool SyncDB() {
+
+  lcd.setCursor(0, 0);
+  lcd.print(F("Synchronizing DB"));
+  lcd.setCursor(0, 1);
+  lcd.print(F("                "));
 
   // Identify yourself to the server and declare intentions
   uint8_t* sync_start_code = (uint8_t*) malloc(5 + 28);
@@ -142,9 +144,15 @@ bool SyncDB() {
   // Receive the reply
   uint8_t* reply_buffer = receiveEncrypted(5);
 
+  lcd.setCursor(0, 1);
+  lcd.print(F("Server reply    "));
+
   // Check reply
   if (reply_buffer[0] == 1 && reply_buffer[1] == 219 && reply_buffer[4] == 170) {
     free(reply_buffer);
+
+    lcd.setCursor(0, 1);
+    lcd.print(F("Server reply OK "));
 
     uint8_t enrolled_count = fps.GetEnrollCount(); // Get the number of enrolled fingerprints (Max 200 for our FPS, if using another FPS, change type to uint16_t).
 
@@ -183,13 +191,26 @@ bool SyncDB() {
         else num_fingerprints = 8;
 
         uint8_t* hash_array = (uint8_t*) malloc(num_fingerprints * 4 + 28); // Careful with memory here
-        HashFingerprintDDBB(hash_array, id_enrolled_array + sync_run * 8, last_enrolled, num_fingerprints); // Generate a list of hashes from every existing fingerprint in the FPS
+        bool hash_succesful = HashFingerprintDDBB(hash_array, id_enrolled_array + sync_run * 8, last_enrolled, num_fingerprints); // Generate a list of hashes from every existing fingerprint in the FPS
+
+        if (!hash_succesful) { // The hashDB routine failed, restart everything
+          free(hash_array);
+          free(id_enrolled_array);
+          lcd.setCursor(0, 1);
+          lcd.print(F("Failed, restart."));
+          Buzz();
+          delay(6000); // Let the server waiting for a reply timeout
+          return false;
+        }
 
         // Send hash list
         sendEncrypted(hash_array, num_fingerprints * 4);
         free(hash_array);
 
       }
+
+      lcd.setCursor(0, 1);
+      lcd.print(F("Updating...     "));
 
       while (true) { // Keep processing received packets until the server is done (Reply = 0D)
         uint8_t* sync_reply_buffer = receiveEncrypted(6); // If the DDBB is slow generating the list of fingerprint hashes and replying, this may fail.
@@ -226,9 +247,13 @@ bool SyncDB() {
       } else free(sync_reply_buffer);
     }
 
+    lcd.setCursor(0, 1);
+    lcd.print(F("Update succesful"));
     return true;
   } else {
     free(reply_buffer);
+    lcd.setCursor(0, 1);
+    lcd.print(F("Update failed!  "));
     return false;
   }
 }
@@ -277,7 +302,7 @@ bool SyncFingerprint(const uint8_t template_hash[4]) {
 
 // Generate a list of hashes from every existing fingerprint in the FPS
 // WARNING: Inconsistent use of 8 and 16 bits IDs. Other models of the FPS require 16 bits only. May not fix this yet.
-void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last_enrolled, uint8_t enrolled_count) {
+bool HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last_enrolled, uint8_t enrolled_count) {
 
   uint8_t count = 0;
 
@@ -290,14 +315,16 @@ void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last
 
       bool sync_failed = true;
 
-      while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
-        sync_failed = fps.GetTemplate(last_enrolled, data + 2);
+      sync_failed = fps.GetTemplate(last_enrolled, data + 2);
+      if (sync_failed) {
+        free(data);
+        return false; // Fail the SyncDB routine and restart it over
+      } else {
+        ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 500);
+        free(data);
+        id_array[count++] = last_enrolled;
+        if (count == enrolled_count) return true;
       }
-
-      ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 500);
-      free(data);
-      id_array[count++] = last_enrolled;
-      if (count == enrolled_count) return;
     }
   } while (last_enrolled < 200);
 
@@ -336,9 +363,7 @@ bool sendFingerprint(uint16_t id) {
     uint8_t* data = (uint8_t*) malloc(500 + 28 + 2); // Template (498 bytes) + 2 checksum bytes + 28 bytes for GCM cypher + 2 ID
     *((uint16_t*) data + 6) = id; // Set the ID used for the fingerprint after the IV code
 
-    while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
-      sync_failed = fps.GetTemplate(id, data + 14); // FPS will get the fingerprint and send it to the ESP
-    }
+    sync_failed = fps.GetTemplate(id, data + 14); // FPS will get the fingerprint and send it to the ESP
 
     if (!sync_failed) sendEncrypted(data, 502);
     free(data);
@@ -361,6 +386,8 @@ void Enroll() {
     if (usedid == true) enrollid++;
   }
   fps.EnrollStart(enrollid);
+  lcd.setCursor(0, 0);
+  lcd.print(F("                "));
   lcd.setCursor(0, 0);
   lcd.print(F("Enrolling #"));
   lcd.print(enrollid);
@@ -453,24 +480,15 @@ void Enroll() {
 
           // Synchronize the fingerprint with the DB
           lcd.setCursor(0, 0);
-          lcd.print(F("Synchronizing DB"));
-          for (int i = 1; i <= 3; i++) {
-            lcd.setCursor(0, 1);
-            lcd.print(F("Try #"));
-            lcd.print(i);
-            lcd.print(F("      "));
-            lcd.setCursor(6, 1);
-            if (sendFingerprint(enrollid)) {
-              lcd.print(F(": Success"));
-              Buzz();
-              delay(1000);
-              break;
-            } else {
-              lcd.print(F(": Fail"));
-              Buzz();
-              delay(1000);
-            }
+          lcd.print(F("Updating finger "));
+          lcd.setCursor(0, 1);
+          if (sendFingerprint(enrollid)) lcd.print(F("   Succesful!   "));
+          else {
+            lcd.print(F("Failed, retry..."));
+            fps.DeleteID(enrollid); // Delete the failed fingerprint from the DDBB
           }
+          Buzz();
+          delay(1000);
 
         }
         else
@@ -515,10 +533,6 @@ void initiateConnection() {
   // Retry steps if failed
   while (!esp->joinAP(F("$WIFI_SSID$"), F("$WIFI_PASS$"))) delay(1000);
   while (!esp->registerUDP(F("10.0.0.2"), 40444)) delay(1000);
-
-  // DEBUG - Print the current connection details
-  Serial.println(esp->getLocalIP());
-  Serial.println(esp->getIPStatus());
 }
 
 void loop()

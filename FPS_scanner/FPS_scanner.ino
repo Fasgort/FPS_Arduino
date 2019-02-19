@@ -58,10 +58,6 @@ void setup() {
   // RandomSeed
   randomSeed(analogRead(A2) * 16777216 + analogRead(A3) * 65536 + analogRead(A4) * 256 + analogRead(A5)); // Unused pins
 
-  // Debug
-  Serial.begin(115200);
-  Serial.println(F("Start"));
-
   // LCD
   lcd.begin(16, 2);
 
@@ -126,7 +122,7 @@ uint8_t* receiveEncrypted(const uint16_t unencrypted_len) {
   }
 }
 
-// Here we go
+// Sync routine
 bool SyncDB() {
 
   lcd.setCursor(0, 0);
@@ -194,7 +190,17 @@ bool SyncDB() {
         else num_fingerprints = 8;
 
         uint8_t* hash_array = (uint8_t*) malloc(num_fingerprints * 4 + 28); // Careful with memory here
-        HashFingerprintDDBB(hash_array, id_enrolled_array + sync_run * 8, last_enrolled, num_fingerprints); // Generate a list of hashes from every existing fingerprint in the FPS
+        bool hash_succesful = HashFingerprintDDBB(hash_array, id_enrolled_array + sync_run * 8, last_enrolled, num_fingerprints); // Generate a list of hashes from every existing fingerprint in the FPS
+
+        if (!hash_succesful) { // The hashDB routine failed, restart everything
+          free(hash_array);
+          free(id_enrolled_array);
+          lcd.setCursor(0, 1);
+          lcd.print(F("Failed, restart."));
+          Buzz();
+          delay(6000); // Let the server waiting for a reply timeout
+          return false;
+        }
 
         // Send hash list
         sendEncrypted(hash_array, num_fingerprints * 4);
@@ -295,7 +301,7 @@ bool SyncFingerprint(const uint8_t template_hash[4]) {
 
 // Generate a list of hashes from every existing fingerprint in the FPS
 // WARNING: Inconsistent use of 8 and 16 bits IDs. Other models of the FPS require 16 bits only. May not fix this yet.
-void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last_enrolled, uint8_t enrolled_count) {
+bool HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last_enrolled, uint8_t enrolled_count) {
 
   uint8_t count = 0;
 
@@ -308,14 +314,16 @@ void HashFingerprintDDBB(uint8_t hash_array[], uint8_t id_array[], uint8_t& last
 
       bool sync_failed = true;
 
-      while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
-        sync_failed = fps.GetTemplate(last_enrolled, data + 2);
+      sync_failed = fps.GetTemplate(last_enrolled, data + 2);
+      if (sync_failed) {
+        free(data);
+        return false; // Fail the SyncDB routine and restart it over
+      } else {
+        ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 500);
+        free(data);
+        id_array[count++] = last_enrolled;
+        if (count == enrolled_count) return true;
       }
-
-      ((uint32_t*) hash_array)[count + 3] = rokkit((char*)data, 500);
-      free(data);
-      id_array[count++] = last_enrolled;
-      if (count == enrolled_count) return;
     }
   } while (last_enrolled < 200);
 
@@ -345,9 +353,7 @@ bool sendFingerprintRead(uint16_t id) {
     uint8_t* data = (uint8_t*) malloc(500 + 28 + 2); // Template (498 bytes) + 2 checksum bytes + 28 bytes for GCM cypher + 2 ID
     *((uint16_t*) data + 6) = id; // Set the ID used for the fingerprint after the IV code
 
-    while (sync_failed) { // Infinite bucle if something is wrong with the FPS, still wondering what to do in those cases
-      sync_failed = fps.GetTemplate(id, data + 14); // FPS will get the fingerprint and send it to the ESP
-    }
+    sync_failed = fps.GetTemplate(id, data + 14); // FPS will get the fingerprint and send it to the ESP
 
     if (!sync_failed) sendEncrypted(data, 502);
     free(data);
@@ -382,10 +388,6 @@ void initiateConnection() {
 
   lcd.setCursor(0, 1);
   lcd.print(F("  Successful!   "));
-
-  // DEBUG - Print the current connection details
-  Serial.println(esp->getLocalIP());
-  Serial.println(esp->getIPStatus());
 }
 
 void Buzz() {
@@ -415,18 +417,27 @@ void loop()
 
       if (id < 200) //<- change id value depending model you are using
       { //if the fingerprint matches, provide the matching template ID
-        Serial.print(F("Verified ID:"));
-        Serial.println(id);
-        lcd.setCursor(0, 1);
-        lcd.print(F("  Found ID #"));
+        lcd.setCursor(0, 0);
+        lcd.print(F("                "));
+        lcd.setCursor(0, 0);
+        lcd.print(F("Found ID #"));
         lcd.print(id);
-        sendFingerprintRead(id); // To-implement: Use case when the entrance is disallowed
+        if (sendFingerprintRead(id)) {
+          // Succesful
+          lcd.setCursor(0, 1);
+          lcd.print(F("Access GRANTED! "));
+        } else {
+          // Failed or disallowed
+          lcd.setCursor(0, 1);
+          lcd.print(F("Access FAILED! "));
+        }
       }
       else
       { //if unable to recognize
-        Serial.println(F("Finger not found"));
+        lcd.setCursor(0, 0);
+        lcd.print(F("Finger NOT FOUND"));
         lcd.setCursor(0, 1);
-        lcd.print(F("  Not found     "));
+        lcd.print(F("Access FAILED! "));
       }
       Buzz();
       delay(1000);
