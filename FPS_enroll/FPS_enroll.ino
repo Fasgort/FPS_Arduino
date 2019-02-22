@@ -378,7 +378,7 @@ bool sendFingerprint(uint16_t id) {
 void Enroll() {
 
   // find open enroll id
-  int enrollid = 0;
+  uint16_t enrollid = 0;
   bool usedid = true;
   while (usedid == true)
   {
@@ -404,7 +404,7 @@ void Enroll() {
       fps.SetLED(true);
       if (fps.IsPressFinger()) {
         bret = fps.CaptureFinger(true);
-        if (bret != false) fps.Enroll1();
+        if (bret != false) iret = fps.Enroll1();
         Buzz();
         break;
       }
@@ -414,8 +414,7 @@ void Enroll() {
     }
   }
 
-  if (bret != false)
-  {
+  if (bret != false && !iret) {
     lcd.setCursor(0, 1);
     lcd.print(F(" Remove finger  "));
     while (fps.IsPressFinger() == true) delay(100);
@@ -428,7 +427,7 @@ void Enroll() {
         fps.SetLED(true);
         if (fps.IsPressFinger()) {
           bret = fps.CaptureFinger(true);
-          if (bret != false) fps.Enroll2();
+          if (bret != false) iret = fps.Enroll2();
           Buzz();
           break;
         }
@@ -437,82 +436,70 @@ void Enroll() {
         delay(100);
       }
     }
+  }
 
-    if (bret != false)
-    {
-      lcd.setCursor(0, 1);
-      lcd.print(F(" Remove finger  "));
-      while (fps.IsPressFinger() == true) delay(100);
-      Buzz();
-      lcd.setCursor(0, 1);
-      lcd.print(F("  Press finger  "));
+  if (bret != false && !iret) {
+    lcd.setCursor(0, 1);
+    lcd.print(F(" Remove finger  "));
+    while (fps.IsPressFinger() == true) delay(100);
+    Buzz();
+    lcd.setCursor(0, 1);
+    lcd.print(F("  Press finger  "));
 
-      while (true) {
-        if (digitalRead(touch)) {
-          fps.SetLED(true);
-          if (fps.IsPressFinger()) {
-            bret = fps.CaptureFinger(true);
-            if (bret != false) iret = fps.Enroll3();
-            Buzz();
-            break;
-          }
-        } else {
-          fps.SetLED(false);
-          delay(100);
-        }
-      }
-
-      if (bret != false)
-      {
-        lcd.setCursor(0, 1);
-        lcd.print(F(" Remove finger  "));
-        while (fps.IsPressFinger() == true) delay(100);
-        Buzz();
-        if (iret == 0)
-        {
-          lcd.setCursor(0, 1);
-          lcd.print(F("   Successful   "));
-
-          fps.SetLED(false);   //turn off LED
-          delay(1000);
+    while (true) {
+      if (digitalRead(touch)) {
+        fps.SetLED(true);
+        if (fps.IsPressFinger()) {
+          bret = fps.CaptureFinger(true);
+          if (bret != false) iret = fps.Enroll3();
           Buzz();
-          lcd.clear();
-
-          // Synchronize the fingerprint with the DB
-          lcd.setCursor(0, 0);
-          lcd.print(F("Updating finger "));
-          lcd.setCursor(0, 1);
-          if (sendFingerprint(enrollid)) lcd.print(F("   Succesful!   "));
-          else {
-            lcd.print(F("Failed, retry..."));
-            fps.DeleteID(enrollid); // Delete the failed fingerprint from the DDBB
-          }
-          Buzz();
-          delay(1000);
-
+          break;
         }
-        else
-        {
-          lcd.setCursor(0, 1);
-          lcd.print(F("   Failed: #"));
-          lcd.print(iret);
-          lcd.print(F("   "));
-        }
+      } else {
+        fps.SetLED(false);
+        delay(100);
       }
-      else {
-        lcd.setCursor(0, 1);
-        lcd.print(F("Fail: Bad finger"));
-      }
-    }
-    else {
-      lcd.setCursor(0, 1);
-      lcd.print(F("Fail: Bad finger"));
     }
   }
-  else {
+
+  if (bret != false && !iret) {
+    lcd.setCursor(0, 1);
+    lcd.print(F(" Remove finger  "));
+    while (fps.IsPressFinger() == true) delay(100);
+    Buzz();
+    if (iret == 0) {
+      lcd.setCursor(0, 1);
+      lcd.print(F("   Successful   "));
+
+      fps.SetLED(false);   //turn off LED
+      delay(1000);
+      Buzz();
+      lcd.clear();
+
+      // Synchronize the fingerprint with the DB
+      lcd.setCursor(0, 0);
+      lcd.print(F("Updating finger "));
+      lcd.setCursor(0, 1);
+      if (sendFingerprint(enrollid)) lcd.print(F("   Succesful!   "));
+      else {
+        lcd.print(F("Failed, retry..."));
+        fps.DeleteID(enrollid); // Delete the failed fingerprint from the DDBB
+      }
+      Buzz();
+      delay(1000);
+    }
+  }
+
+  if (!bret) {
     lcd.setCursor(0, 1);
     lcd.print(F("Fail: Bad finger"));
+  } else if (iret) {
+    lcd.setCursor(0, 1);
+    lcd.print(F("   Failed: #"));
+    lcd.print(iret);
+    lcd.print(F("   "));
   }
+
   fps.SetLED(false);   //turn off LED
   delay(1000);
   Buzz();
