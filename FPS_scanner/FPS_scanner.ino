@@ -431,6 +431,7 @@ void loop()
           lcd.setCursor(0, 1);
           lcd.print(F("Access FAILED! "));
         }
+        delay(1000); // Wait a bit if the fingerprint read was succesful
       }
       else
       { //if unable to recognize
@@ -440,7 +441,7 @@ void loop()
         lcd.print(F("Access FAILED! "));
       }
       Buzz();
-      delay(1000);
+      delay(100); // Fail quickly to retry reading
       Buzz();
     }
 
