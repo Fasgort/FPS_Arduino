@@ -1,8 +1,7 @@
-#include <LiquidCrystal.h>
+#include <LiquidCrystal_I2C.h>
 #include <AES.h>
 #include <GCM.h>
 #include <RokkitHash.h>
-#include <doxygen.h>
 #include <ESP8266.h>
 #include "SoftwareSerial.h"
 #include <FPS_GT511C3.h>
@@ -10,30 +9,13 @@
 
 
 // SoftwareSerial for ESP8266
-SoftwareSerial *esp_serial = new SoftwareSerial(A0, A1); // RX, TX
+SoftwareSerial *esp_serial = new SoftwareSerial(4, 5); // RX, TX
 ESP8266 *esp = new ESP8266(*esp_serial, 9600);
 
 // need a serial port to communicate with the GT-511C3
-FPS_GT511C3 fps(8, 7, 57600); // Arduino RX (GT TX), Arduino TX (GT RX)
+FPS_GT511C3 fps(8, 7); // Arduino RX (GT TX), Arduino TX (GT RX)
 // the Arduino TX pin needs a voltage divider, see wiring diagram at:
 // http://startingelectronics.com/articles/GT-511C3-fingerprint-scanner-hardware/
-
-/* 16x2 LCD circuit:
-
-   LCD RS pin to digital pin 12
-   LCD Enable pin to digital pin 11
-   LCD D4 pin to digital pin 5
-   LCD D5 pin to digital pin 4
-   LCD D6 pin to digital pin 3
-   LCD D7 pin to digital pin 2
-   LCD R/W pin to ground
-   LCD VSS pin to ground
-   LCD VCC pin to 5V
-   10K resistor:
-   ends to +5V and ground
-   wiper to LCD VO pin (pin 3)
-
-*/
 
 // Buzzer
 const int buzzer = 9; //buzzer to arduino pin 9
@@ -41,10 +23,8 @@ const int buzzer = 9; //buzzer to arduino pin 9
 // Touch Interface
 const uint8_t touch = 13;
 
-// initialize the library by associating any needed LCD interface pin
-// with the arduino pin number it is connected to
-const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
-LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+// declare lcd object
+LiquidCrystal_I2C lcd(0x3F, 16, 2);
 
 // AES256 - GCM
 GCM<AESTiny128> gcm;
@@ -53,10 +33,11 @@ const uint8_t key[16] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6};
 void setup() {
 
   // RandomSeed
-  randomSeed(analogRead(A2) * 16777216 + analogRead(A3) * 65536 + analogRead(A4) * 256 + analogRead(A5)); // Unused pins
+  randomSeed(analogRead(A0) * 16777216 + analogRead(A1) * 65536 + analogRead(A2) * 256 + analogRead(A3)); // Unused pins
 
   // LCD
-  lcd.begin(16, 2);
+  lcd.init();
+  lcd.backlight();
 
   // Buzzer
   pinMode(buzzer, OUTPUT); // Set buzzer - pin 9 as an output
@@ -65,7 +46,7 @@ void setup() {
   pinMode(touch, INPUT); // This pin notifies Arduino of FPS touch
 
   // FPS
-  fps.Open(); //send serial command to initialize fps
+  fps.Open(57600); //send serial command to initialize fps
   //fps.DeleteAll(); // Clear the DB
 
   // AES256-GCM cypher

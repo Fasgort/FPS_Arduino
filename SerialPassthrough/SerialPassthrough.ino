@@ -23,7 +23,7 @@
 */
 
 #include "SoftwareSerial.h"
-SoftwareSerial esp_serial(A0, A1);
+SoftwareSerial esp_serial(4, 5);
 
 void setup() {
   Serial.begin(9600);
